@@ -1,0 +1,13 @@
+[project]
+name = "targettts"
+version = "0.1.0"
+description = "ECE1508 - Target speaker transcription from overlapping speech"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "torchaudio",
+    "soundfile",
+    "openai-whisper",
+    "numpy",
+    "ipykernel",
+]

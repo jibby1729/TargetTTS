@@ -1,0 +1,54 @@
+\begin{table}[H]
+	\begin{tabular}{l l}
+		\hline
+		\textbf{Topic} & Target-Speaker Speech-to-Text in Overlapping Speech \\
+        \textbf{Category} & Deep Learning for Audio Modelling \\
+		\hline
+	\end{tabular}
+\end{table}
+
+\paragraph*{Objective}
+Develop a target-speaker speech-to-text system that transcribes only a chosen speaker from audio containing overlapping speech. The system takes (i) a short enrollment utterance of the target speaker and (ii) a multi-speaker mixture, and outputs the target speaker's transcript. We will test this across 2-3 languages to see where language-specific modifications are needed.
+
+\paragraph*{Motivation}
+Modern speech-to-text systems perform well on clean, single-speaker audio but degrade sharply when speakers overlap \cite{Chime} \cite{overlap}. This is a common occurrence in meetings, court proceedings, and media such as films or talk shows, and rather than attempting full diarization and separation, target-speaker transcription offers a more focused alternative: given a short enrollment clip, transcribe only the speaker of interest. Additionally, the rise of full-duplex speech-to-speech models is increasing the demand for labelled transcriptions of natural conversations with interruptions \cite{Moshi, PersonaPlex}. A reliable target-speaker system could automatically generate such labels by isolating each participant and producing timed transcripts, even through overlapping speech.
+
+\paragraph*{Requirements}
+The final submission should address the following requirements while implementation details are decided by the group members.
+\begin{enumerate}
+    \item \textbf{Baseline ASR:} Implement ASR baselines from scratch or using pretrained open-source models and report WER on clean single-speaker audio and on overlapped mixtures.
+    \item \textbf{Overlapped-speech benchmark:} Build a data pipeline that generates controlled two-speaker (and optionally more) mixtures with configurable SNR and overlap ratio from open-source datasets.
+    \item \textbf{Target-speaker transcription:} Implement a method to transcribe a target speaker in mixtures given an enrollment clip, and demonstrate improved target-speaker WER relative to baseline.
+    \item \textbf{Robust evaluation:} Report WER versus SNR and overlap ratio for the different models. Include at least one measure of non-target leakage (e.g., rate of non-target words appearing in the output).
+\end{enumerate}
+
+\paragraph*{Milestones}
+The following milestones are to be accomplished through the semester.
+\begin{enumerate}
+    \item \textbf{Milestone 1:} Select datasets (English, optional: Twi and a third language), set up preprocessing and text normalization, and establish WER computation. Run pretrained ASR on clean speech as a baseline.
+    \item \textbf{Milestone 2:} Implement synthetic mixture generation (overlap + SNR control). Establish baseline results: ASR on mixtures without any separation/conditioning. Produce initial WER vs SNR/overlap plots.
+    \item \textbf{Milestone 3:} Implement target-speaker method:
+    (a) compute speaker embeddings from enrollment audio using a pretrained speaker model, and
+    (b) train a lightweight speaker-conditioned extraction or masking module, keeping the ASR model frozen.
+    \item \textbf{Milestone 4:} Perform full evaluation and ablations: WER versus enrollment audio length, non-target leakage analysis, and comparison across ASR model choices (pretrained, fine-tuned, trained from scratch). Optional: evaluate on Twi and additional languages to test cross-lingual generalization.
+
+    \item \textbf{Milestone 5:} Final Report and Presentation
+
+\end{enumerate}
+
+
+	
+\paragraph*{Submission Guidelines} The main body of work is submitted through Git. In addition, each group submits a final paper and gives a presentation. In this respect, please follow these steps.
+\begin{itemize}
+	\item Each group must maintain a Git repository, e.g., GitHub or GitLab, for the project. By the time of final submission, the repository should have
+	\begin{itemize}
+		\item Well-documented codebase
+		\item Clear \texttt{README.md} with setup and usage instructions
+		\item A \texttt{requirements.txt} file listing all required packages or an \texttt{environment.yaml} file with a reproducible environment setup
+		\item Demo script or notebook showing sample input-output
+		\item \textit{If applicable,} a \texttt{/doc} folder with extended documentation
+	\end{itemize}
+	\item A final report (maximum \textit{5 pages}) must be submitted in a PDF format. The report should be written in the provided formal style, including an abstract, introduction, method, experiments, results, and conclusion.\\
+	\textbf{Important:} Submissions that do not use template are considered \textit{incomplete.}
+	\item A 5-minute presentation (maximum \textit{5 slides including the title slide}) is given on the internal seminar on Week 15, i.e., \textit{Apr 6 to Apr 10,} by the group. For presentation, any template can be used.
+\end{itemize}
