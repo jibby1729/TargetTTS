@@ -1,0 +1,142 @@
+\documentclass{article}
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2023
+\usepackage[final]{neurips}
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsmath}        % math environments and \text
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{graphicx}       % figures
+\usepackage{float}          % [H] float placement
+
+
+\title{Target-Speaker Speech-to-Text in Overlapping Speech}
+
+
+\author{%
+  Jibran Iqbal Shah\\
+  Department of Electrical and Computer Engineering\\
+  University of Toronto\\
+  \texttt{jibraniqbal.shah@mail.utoronto.ca} \\
+  \And
+  Yamoah Frimpong Attafuah\\
+  Department of Electrical and Computer Engineering\\
+  University of Toronto\\
+  \texttt{yamoah.attafuah@mail.utoronto.ca} \\
+  % TODO: add or remove third author
+  %\AND
+  %Third Author \\
+  %Department of Electrical and Computer Engineering\\
+  %University of Toronto\\
+  %\texttt{email} \\
+}
+
+\begin{document}
+
+
+\maketitle
+
+% Abstract, Attestation of Teamwork — not required for briefing; will be added in final report.
+
+
+\section{Introduction}
+
+Modern speech-to-text systems perform well on clean, single-speaker audio but degrade sharply when speakers overlap~\citep{Chime, overlap}. This is a common occurrence in meetings, court proceedings, and media such as films or talk shows. Rather than attempting full diarization and separation, target-speaker transcription offers a more focused alternative: given a short enrollment clip, transcribe only the speaker of interest.
+
+Additionally, the rise of full-duplex speech-to-speech models is increasing the demand for labelled transcriptions of natural conversations with interruptions~\citep{Moshi, PersonaPlex}. A reliable target-speaker system could automatically generate such labels by isolating each participant and producing timed transcripts, even through overlapping speech.
+
+The objective of this project is to develop a target-speaker speech-to-text system that takes (i) a short enrollment utterance of the target speaker and (ii) a multi-speaker mixture, and outputs only the target speaker's transcript.
+
+
+\section{Problem Formulation}
+
+Let $\mathbf{x}_{\text{mix}} \in \mathbb{R}^T$ be a single-channel audio mixture containing overlapping speech from $N \geq 2$ speakers. We are also given a short enrollment utterance $\mathbf{x}_{\text{enroll}} \in \mathbb{R}^{T_e}$ of the target speaker $s^*$. The goal is to produce a transcript $\hat{y}$ that matches the ground-truth transcript $y^*$ of speaker $s^*$ within the mixture, as measured by word error rate:
+\[
+\text{WER} = \frac{S + D + I}{N_{\text{ref}}}
+\]
+where $S$, $D$, $I$ are the number of substitutions, deletions, and insertions respectively, and $N_{\text{ref}}$ is the number of words in the reference transcript.
+
+A secondary evaluation criterion is non-target leakage: the rate at which words from interfering speakers appear in the output transcript.
+
+
+\section{Proposed Design}
+
+Our pipeline consists of three stages:
+
+\begin{enumerate}
+    \item \textbf{Speaker embedding extraction.} A pretrained speaker verification model encodes the enrollment utterance $\mathbf{x}_{\text{enroll}}$ into a fixed-dimensional speaker embedding $\mathbf{e} \in \mathbb{R}^d$.
+
+    \item \textbf{Speaker-conditioned extraction.} A lightweight neural module receives the mixture $\mathbf{x}_{\text{mix}}$ (or its spectrogram) together with the speaker embedding $\mathbf{e}$ and produces either (a) a time--frequency mask that isolates the target speaker's signal, or (b) a conditioned representation that is passed directly to the ASR encoder. This module is the only component that is trained; the speaker encoder and ASR model remain frozen.
+
+    \item \textbf{ASR decoding.} A pretrained ASR model transcribes the extracted or conditioned signal into text. We apply text normalization to both predicted and reference transcripts before computing WER, ensuring fair comparison.
+\end{enumerate}
+
+For baselines, we run the ASR model directly on (a) clean single-speaker audio and (b) raw mixtures without any conditioning, to quantify the WER degradation caused by overlap and the improvement provided by speaker conditioning.
+
+
+\section{Data Acquisition}
+
+\subsection{LibriSpeech}
+We use the LibriSpeech corpus, a large-scale dataset of read English speech derived from public-domain audiobooks. All audio is 16\,kHz mono FLAC. We have downloaded the \texttt{dev-clean} and \texttt{test-clean} splits and built JSONL manifest files that index each utterance with its audio path, speaker ID, chapter ID, transcript, frame count, and duration. The manifests enable efficient iteration without loading the full dataset into memory.
+
+\subsection{Synthetic mixture generation (in progress)}
+To evaluate robustness, we will generate synthetic two-speaker mixtures by summing pairs of utterances from different speakers at configurable signal-to-noise ratios (SNR) and overlap ratios. This provides controlled benchmarks for measuring WER as a function of interference severity.
+
+\subsection{Preprocessing}
+Audio files are loaded via \texttt{soundfile}, validated to be 16\,kHz (no resampling is applied), and peak-normalized to $[-1, 1]$. Transcripts are normalized using Whisper's \texttt{EnglishTextNormalizer}, which lowercases text, removes punctuation, expands contractions, and strips filler words. This normalization is applied to both ground-truth and ASR output before WER computation.
+
+
+\section{Progress and Milestones}
+
+\subsection{Completed}
+\begin{itemize}
+    \item Dataset selection: LibriSpeech (English) chosen as the primary corpus.
+    \item Audio preprocessing: loading, sample-rate validation, and peak normalization implemented and verified.
+    \item Text normalization: Whisper's \texttt{EnglishTextNormalizer} integrated for consistent WER evaluation.
+    \item WER evaluation pipeline using \texttt{jiwer}, with baseline ASR inference on clean speech.
+\end{itemize}
+
+\subsection{Preliminary baseline results}
+
+We evaluated two pretrained Whisper model sizes on the LibriSpeech \texttt{test-clean} split (2620 utterances) to establish clean-speech baselines. These results will serve as the upper-bound reference when we later evaluate on overlapped mixtures.
+
+\begin{table}[H]
+  \caption{Baseline WER (\%) on LibriSpeech \texttt{test-clean} (clean, single-speaker audio).}
+  \label{tab:baseline-wer}
+  \centering
+  \begin{tabular}{lcc}
+    \toprule
+    Model & Parameters & WER (\%) \\
+    \midrule
+    Whisper-tiny  & 39M  & 7.49 \\
+    Whisper-base  & 74M  & 5.17 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\subsection{Next steps}
+\begin{itemize}
+    \item Synthetic mixture generation with configurable SNR and overlap ratio.
+    \item Baseline ASR on mixtures (unconditioned) to quantify WER degradation from overlapping speech.
+    \item Speaker embedding extraction using a pretrained speaker verification model.
+    \item Design and training of the speaker-conditioned extraction module.
+\end{itemize}
+
+
+\bibliographystyle{unsrtnat}
+\bibliography{references}
+
+% Use of AI, Consent, Group Identification — not required for briefing; will be added in final report.
+
+\end{document}

@@ -1,3 +1,123 @@
+\documentclass[11pt,a4paper,BCOR12mm, headexclude, footexclude, openright]{scrartcl} 
+\usepackage{newpxtext}
+\usepackage[british]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage{listings}
+\usepackage[T1]{fontenc}
+\usepackage{href-ul}
+%\usepackage[scaled=0.85]{beramono}            % load a nice TT font
+%\lstset{basicstyle=\ttfamily, language=sh}  
+\lstset{columns=fullflexible,basicstyle=\ttfamily}
+\usepackage{fancyhdr}
+\usepackage{lastpage}
+\usepackage{ifthen}
+\usepackage{amsmath,amsfonts,amsthm}
+%\usepackage{sfmath}
+%\usepackage{eulervm}
+\usepackage{makecell}
+\usepackage{booktabs}
+\usepackage{sectsty}
+\usepackage{bbm}
+\usepackage{commands}
+\usepackage{tikz,pgfplots}
+\usepackage{tikz-cd}
+\usetikzlibrary{patterns,intersections,matrix,fit,trees,positioning,chains,shapes.geometric,shapes,angles,quotes,pgfplots.fillbetween}
+\usetikzlibrary{arrows,math}
+\usepackage{tikz-cd}
+\usepackage{tikz-3dplot}
+\usetikzlibrary{arrows.meta,bending}
+\usepackage{tikzsymbols}
+\usepackage{tikzpeople}
+\usetikzlibrary{calc}
+\usetikzlibrary{chains,positioning,shapes.symbols,fadings,shadows,backgrounds}
+\usetikzlibrary{decorations.pathmorphing, decorations.pathreplacing}
+\usetikzlibrary{shapes.callouts}
+\usetikzlibrary{shapes.arrows,shadings}
+\usetikzlibrary{decorations.text}
+\usepackage{algorithm,algorithmic}
+%\KOMAoptions{optionenliste}
+%\KOMAoptions{Option}{Werteliste}
+\usepackage{listings}
+\usepackage{inconsolata}
+\lstset{%
+	numbers=left,
+	numberstyle=\tiny,
+	basicstyle=\ttfamily\fontfamily{courier}\footnotesize,
+}
+
+
+\renewcommand{\arraystretch}{1.1}
+\newcommand{\horrule}[1]{\rule{\linewidth}{#1}}
+\setlength{\textheight}{250mm}
+\setlength{\textwidth}{175mm}
+\setlength{\hoffset}{-25mm}
+\setlength{\voffset}{-15mm}
+\allsectionsfont{\centering \normalfont\scshape}
+
+
+\numberwithin{equation}{section} 
+\numberwithin{figure}{section}
+\numberwithin{table}{section} 
+
+
+\newcommand{\ProjectTopic}{Topic}
+\newcommand{\ProjectCat}{Open-ended}
+\setlength\parindent{0pt}
+
+\fancypagestyle{plain}
+{%
+	\renewcommand{\headrulewidth}{0pt}%
+	\renewcommand{\footrulewidth}{0.5pt}
+	\fancyhf{}%
+	\fancyfoot[R]{\emph{\footnotesize Page \thepage\ of \pageref{LastPage}}}%
+	\fancyfoot[L]{\emph{\footnotesize \ProjectTopic}}%
+}
+\pagestyle{plain}
+
+\newcommand{\question}[3]{
+	\hrule
+	\hrule
+	\vspace{3pt}
+	Question #1: #2 \hfill #3 Points
+	\vspace{3pt}
+	\hrule
+	\hrule
+	\vspace{7pt}
+}
+
+\newcommand{\code}[1]{\colorbox{gray!20}{\texttt{#1}}}
+\newcommand{\textbox}[2]{
+	\begin{center}
+		\fbox{
+			\begin{minipage}{ {#1} em}
+				{#2}
+			\end{minipage}
+		}
+	\end{center} 
+}
+\begin{document}
+	
+	\titlehead
+	{
+		\horrule{.5pt}\\
+		University of Toronto\\%
+		Department of Electrical and Computer Engineering\\%
+		ECE1508: \textbf{Applied Deep Learning}
+		\hfill
+		A. Bereyhi - Winter 2026
+		\vspace{-1ex}\\
+		\horrule{.5pt}\\
+	}
+	\subject{}
+	\title{ }
+	\subtitle{\normalfont \textit{Course Project}\vspace*{-2.5cm}}
+	\date{}
+	\maketitle
+	
+	\textbox{43}{\textbf{Code of Honor.} 
+		All external resources used in the project, including research papers, open-source repositories, datasets, and any content or code generated using AI tools, e.g., ChatGPT, GitHub Copilot, Claude, Gemini, must be \textit{clearly cited} in the final submission. The final report must also include \textit{a clear breakdown of individual group member contributions.} Any lack of transparency in the use of external resources or in reporting group contributions will be considered academic dishonesty and will significantly impact the final evaluation.
+	}
+	
 \begin{table}[H]
 	\begin{tabular}{l l}
 		\hline
@@ -52,3 +172,16 @@ The following milestones are to be accomplished through the semester.
 	\textbf{Important:} Submissions that do not use template are considered \textit{incomplete.}
 	\item A 5-minute presentation (maximum \textit{5 slides including the title slide}) is given on the internal seminar on Week 15, i.e., \textit{Apr 6 to Apr 10,} by the group. For presentation, any template can be used.
 \end{itemize}
+
+	
+	\paragraph*{Final Notes} While planning for the milestones please consider the following points.
+	\begin{enumerate}
+		\item You are encouraged to explore innovative approaches to conditioning or generation as long as the core objectives are met.
+		\item While computational resources are limited, carefully chosen datasets and training setups can make even diffusion models feasible. Trade-offs, e.g., resolution, training steps, are expected and should be justified.
+		\item Teams are expected to manage their computing needs and are advised to perform early tests to estimate runtime and training feasibility. As graduate students, team members can use facilities provided by the university, e.g., ECE Facility. Teams are expected to inform themselves about the limitations of the available computing resources and design the model accordingly.
+	\end{enumerate}
+	
+	\bibliographystyle{plain}
+	\bibliography{ref.bib}
+	
+\end{document}

@@ -1,0 +1,390 @@
+%\makeatletter
+%\def\th@newblock{%
+%	\normalfont 
+%	\def\inserttheoremblockenv{exampleblock}}
+%\theoremstyle{newblock}
+%\newtheorem{moral}[theorem]{Moral of Story}
+%\makeatother
+%
+%\makeatletter
+%\def\th@newblock{%
+%	\normalfont 
+%	\def\inserttheoremblockenv{exampleblock}}
+%\theoremstyle{newblock}
+%\newtheorem{attemp}[theorem]{Attempt}
+%\makeatother
+%
+%\makeatletter
+%\def\th@newblock{%
+%	\normalfont 
+%	\def\inserttheoremblockenv{exampleblock}}
+%\theoremstyle{newblock}
+%\newtheorem{answer}[theorem]{A Partial Answer}
+%\makeatother
+
+\newcommand{\setX}{\mathbbmss{X}}
+\newcommand{\setL}{\mathbbmss{L}}
+\newcommand{\setA}{\mathbbmss{A}}
+\newcommand{\setP}{\mathbbmss{P}}
+\newcommand{\setR}{\mathbbmss{R}}
+\newcommand{\setV}{\mathbbmss{V}}
+\newcommand{\setS}{\mathbbmss{S}}
+\newcommand{\setW}{\mathbbmss{W}}
+\newcommand{\setJ}{\mathbbmss{J}}
+\newcommand{\setZ}{\mathbbmss{Z}}
+\newcommand{\setB}{\mathbbmss{B}}
+\newcommand{\setO}{\mathbbmss{O}}
+\newcommand{\setC}{\mathbbmss{C}}
+\newcommand{\setU}{\mathbbmss{U}}
+\newcommand{\setD}{\mathbbmss{D}}
+
+\newcommand{\Ex}[2]{ \mathbb{E}_{#2} \left\lbrace #1 \right\rbrace }
+
+\newcommand{\itr}[1]{ ^{(#1)} }
+
+
+
+\newcommand{\rmP}{P_{\max}}
+\newcommand{\ave}{\mathrm{P}}
+\newcommand{\rmj}{\mathrm{j}}
+\newcommand{\rmc}{\mathrm{c}}
+\newcommand{\rmp}{\mathrm{p}}
+\newcommand{\rmq}{\mathrm{q}}
+\newcommand{\rmF}{\mathrm{F}}
+\newcommand{\rmH}{\mathrm{H}}
+\newcommand{\rmR}{\mathrm{R}}
+\newcommand{\rmg}{\mathrm{g}}
+\newcommand{\rmG}{\mathrm{G}}
+\newcommand{\rmQ}{\mathrm{Q}}
+\newcommand{\rmT}{\mathrm{T}}
+\newcommand{\rmA}{\mathrm{A}}
+\newcommand{\rmK}{\mathrm{K}}
+\newcommand{\rmI}{\mathrm{I}}
+\newcommand{\rmS}{\mathrm{S}}
+\newcommand{\lams}{\lambda^{\mathsf{s}}}
+
+\newcommand{\out}{\mathrm{out}}
+\newcommand{\In}{\mathrm{in}}
+
+\newcommand{\rsim}{\mathsf{Sim}^\mathsf{R}}
+\newcommand{\her}{\mathsf{H}}
+
+\newcommand{\argmin}{\mathop{\mathrm{argmin}}}
+\newcommand{\argmax}{\mathop{\mathrm{argmax}}} 
+
+
+\newcommand{\sfF}{\mathsf{F}}
+\newcommand{\sfI}{\mathsf{I}}
+\newcommand{\sfT}{\mathsf{T}}
+\newcommand{\sfC}{\mathsf{C}}
+\newcommand{\sfM}{\mathsf{M}}
+\newcommand{\sfQ}{\mathsf{Q}}
+\newcommand{\sfE}{\mathsf{E}}
+\newcommand{\sfD}{\mathsf{D}}
+\newcommand{\sfW}{\mathsf{W}}
+\newcommand{\sfr}{\mathsf{r}}
+\newcommand{\sfR}{\mathsf{R}}
+\newcommand{\sfd}{\mathsf{d}}
+\newcommand{\sfZ}{\mathsf{Z}}
+\newcommand{\sfL}{\mathsf{L}}
+\newcommand{\sfK}{\mathsf{K}}
+\newcommand{\sfp}{\mathsf{p}}
+\newcommand{\sfa}{\mathsf{a}}
+
+
+\newcommand{\mah}{\mathcal{H}}
+\newcommand{\maf}{\mathcal{F}}
+\newcommand{\maT}{\mathcal{T}}
+\newcommand{\maP}{\mathcal{P}}
+\newcommand{\mae}{\mathcal{E}}
+\newcommand{\maz}{\mathcal{Z}}
+\newcommand{\mas}{\mathcal{S}}
+\newcommand{\mav}{\mathcal{V}}
+\newcommand{\mab}{\mathcal{B}}
+\newcommand{\man}{\mathcal{N}}
+\newcommand{\mam}{\mathcal{M}}
+\newcommand{\maD}{\mathcal{D}}
+\newcommand{\mao}{\mathcal{O}}
+\newcommand{\maq}{\mathcal{Q}}
+\newcommand{\mg}{\mathcal{G}}
+\newcommand{\mai}{\mathcal{I}}
+\newcommand{\maj}{\mathcal{J}}
+\newcommand{\maw}{\mathcal{W}}
+\newcommand{\mal}{\mathcal{L}}
+\newcommand{\mac}{\mathcal{C}}
+
+\newcommand{\grd}[1]{\overset{\leftharpoonup}{#1}}
+
+
+\newcommand{\bhxx}{\mathbf{x}}
+\newcommand{\bxx}{\mathbf{x}}
+\newcommand{\mh}{\mathbf{h}}
+\newcommand{\bss}{\mathbf{s}}
+\newcommand{\bw}{\mathbf{w}}
+\newcommand{\buu}{\mathbf{u}}
+\newcommand{\bvv}{\mathbf{v}}
+\newcommand{\byy}{\mathbf{y}}
+\newcommand{\bgg}{\mathbf{g}}
+\newcommand{\bff}{\mathbf{f}}
+\newcommand{\bhzz}{{\mathbf{z}}}
+
+\newcommand{\bd}{\mathbf{d}}
+
+\newcommand{\rmx}{\mathrm{x}}
+\newcommand{\rms}{\mathrm{s}}
+\newcommand{\rmw}{\mathrm{w}}
+\newcommand{\rmu}{\mathrm{u}}
+\newcommand{\rmv}{\mathrm{v}}
+\newcommand{\rmy}{\mathrm{y}}
+\newcommand{\papr}{\mathrm{PAPR}}
+\newcommand{\rmz}{\mathrm{z}}
+
+\newcommand{\bhh}{\mathbf{h}}
+\newcommand{\bmu}{\boldsymbol{\mu}}
+\newcommand{\btheta}{\boldsymbol{\theta}}
+\newcommand{\bbeta}{\boldsymbol{\beta}}
+\newcommand{\bx}{{\boldsymbol{x}}}
+\newcommand{\hx}{{\hat{x}}}
+\newcommand{\tx}{{\tilde{x}}}
+\newcommand{\tv}{{\tilde{v}}}
+\newcommand{\hv}{{\hat{v}}}
+\newcommand{\htt}{{\hat{t}}}
+\newcommand{\vv}{\mathrm{v}}
+\newcommand{\hxx}{\hat{\mathrm{x}}}
+\newcommand{\xx}{\mathrm{x}}
+\newcommand{\yy}{\mathrm{y}}
+%\newcommand{\hxx}{\hat{\mathrm{x}}}
+\newcommand{\btx}{\boldsymbol{\tilde{x}}}
+\newcommand{\btv}{\boldsymbol{\tilde{v}}}
+\newcommand{\bhx}{{\boldsymbol{\hat{x}}}}
+\newcommand{\set}[1]{\left\lbrace#1\right\rbrace}
+\newcommand{\diag}[1]{\mathrm{diag}\left\lbrace #1 \right\rbrace}
+\newcommand{\brc}[1]{\left( #1 \right) }
+\newcommand{\dist}[1]{\mathsf{d} \left( #1 \right)}
+\newcommand{\dbc}[1]{\left[ #1 \right] }
+\newcommand{\mar}{\mathcal{R}}
+%\newcommand{\repint}[1]{\mathfrak{S}^{\mu_{#1}}_{#1}}
+
+\newcommand{\ty}{{\tilde{y}}}
+\newcommand{\tz}{{\tilde{z}}}
+\newcommand{\mfPt}{\tilde{\mathfrak{P}}}
+\newcommand{\mfIt}{\tilde{\mathfrak{I}}}
+\newcommand{\makt}{\tilde{\mathcal{K}}}
+
+\newcommand{\bz}{{\boldsymbol{z}}}
+\newcommand{\ba}{{\mathbf{a}}}
+\newcommand{\bg}{{\boldsymbol{g}}}
+\newcommand{\bs}{{\boldsymbol{s}}}
+\newcommand{\br}{{\boldsymbol{r}}}
+\newcommand{\bu}{{\boldsymbol{u}}}
+\newcommand{\bv}{{\boldsymbol{v}}}
+\newcommand{\bc}{{\mathbf{c}}}
+%\newcommand{\bw}{{\boldsymbol{w}}}
+
+\newcommand{\pmf}{{\mathrm{P}}}
+\newcommand{\pdf}{{\mathrm{f}}}
+\newcommand{\cdf}{{\mathrm{F}}}
+
+
+\newcommand{\bzz}{{\mathbf{z}}}
+\newcommand{\baa}{{\mathbf{a}}}
+%\newcommand{\bxx}{{\mathbf{x}}}
+
+\newcommand{\mfP}{\mathfrak{P}}
+\newcommand{\mfI}{\mathfrak{I}}
+\newcommand{\dif}{\mathrm{d}}
+
+\newcommand{\by}{{\boldsymbol{y}}}
+\newcommand{\hy}{{\hat{y}}}
+\newcommand{\bhy}{{\boldsymbol{\hat{y}}}}
+
+\newcommand{\bn}{{\boldsymbol{n}}}
+\newcommand{\hn}{{\hat{n}}}
+\newcommand{\be}{{\boldsymbol{e}}}
+
+\newcommand{\trp}{\mathsf{T}}
+
+\newcommand{\mA}{\mathbf{A}}
+\newcommand{\mC}{\mathbf{C}}
+\newcommand{\mF}{\mathbf{F}}
+\newcommand{\mR}{\mathbf{R}}
+\newcommand{\ma}{\mathbf{A}}
+\newcommand{\mI}{\mathbf{I}}
+\newcommand{\mone}{\mathbf{1}}
+\newcommand{\mJ}{\mathbf{J}}
+\newcommand{\mG}{\mathbf{G}}
+\newcommand{\mQ}{\mathbf{Q}}
+\newcommand{\mS}{\mathbf{S}}
+\newcommand{\mU}{\mathbf{U}}
+\newcommand{\mGam}{\mathbf{A}}
+\newcommand{\mD}{\mathbf{D}}
+\newcommand{\mM}{\mathbf{M}}
+\newcommand{\mLA}{\mathbf{\Lambda}}
+\newcommand{\mX}{\mathbf{X}}
+\newcommand{\mV}{\mathbf{V}}
+\newcommand{\mtV}{\tilde{\mathbf{V}}}
+\newcommand{\mB}{\mathbf{B}}
+\newcommand{\mT}{\mathbf{T}}
+\newcommand{\mH}{\mathbf{H}}
+\newcommand{\mW}{\mathbf{W}}
+\newcommand{\rmE}{\mathrm{Erg}}
+\newcommand{\rmr}{\mathrm{r}}
+\newcommand{\rd}{\mathrm{d}}
+\newcommand{\rme}{\mathrm{e}}
+
+\newcommand{\md}{\mathrm{D}}
+\newcommand{\E}{\mathbb{E}}
+\newcommand{\mse}{\mathrm{MSE}}
+\newcommand{\mseR}{\mathrm{MSE}_{ \mathsf{R} }}
+\newcommand{\hp}{\hat{p}}
+%\newcommand{\papr}{{\mathsf{PAPR}}}
+\newcommand{\rf}{{\mathrm{RF}}}
+\newcommand{\rss}{{\mathrm{RSS}}}
+
+\newcommand{\rls}{{\mathrm{rls}}}
+\newcommand{\rzf}{{\mathrm{rzf}}}
+
+
+
+\newcommand{\C}{\mathbb{C}}
+
+\newcommand{\Proofbegin}{\textbf{Proof.} }
+\newcommand{\Proofend}{\hfill $.\square$ \\}
+\newcommand{\discussion}{\textbf{Discussion.} }
+
+\newcommand{\poster}[2]{\rmq_{\lams} ( #1 | #2 ) }
+
+\newcommand{\blue}[1]{\textcolor{blue}{#1}}
+\newcommand{\gray}[1]{\textcolor{gray}{#1}}
+\newcommand{\red}[1]{\textcolor{red}{#1}}
+\newcommand{\green}[1]{\textcolor{green!50!black}{#1}}
+
+
+\newcommand{\norm}[1]{\lVert #1 \rVert}
+\newcommand{\re}[1]{\mathsf{Re}\left\lbrace #1 \right\rbrace}
+\newcommand{\img}[1]{\mathsf{Im}\left\lbrace #1 \right\rbrace}
+\newcommand{\ind}[1]{\boldsymbol{1} \left\lbrace #1 \right\rbrace}
+\newcommand{\abs}[1]{\lvert #1 \rvert}
+\newcommand{\tr}[1]{\mathrm{tr} \{ #1 \}}
+\newcommand{\inner}[1]{\left\langle #1 \right\rangle}
+\newcommand{\cosha}[1]{\mathrm{cosh}_{\alpha}\mathrm{(} #1 \mathrm{)}}
+\newcommand{\pn}[1]{( #1 )}
+\newcommand{\glse}[1]{\mathrm{glse}\left( #1 \right)}
+\newcommand{\gred}[1]{\nabla_{\hspace*{-.5mm}#1} \hspace*{.5mm}}
+\newcommand{\gredSq}[1]{\nabla^2_{\hspace*{-.5mm}#1} \hspace*{.5mm}}
+\newcommand{\tri}{$\blacktriangleright$}
+\newcommand{\sgn}[1]{\mathsf{sign} \left( #1\right)}
+
+\newcommand{\Tr}{\mathrm{Tr} }
+
+\newcommand{\solbox}[1]{\vspace{-5mm}
+\begin{center}
+\fbox{
+\begin{minipage}{ \linewidth}
+$\qquad$
+\vspace{#1cm}
+
+\end{minipage}
+}
+\end{center} 
+}
+
+\newcommand{\fixedbox}[3]{
+\begin{center}
+\fbox{
+\begin{minipage}[t][{#1}cm]{{#2}em}
+{#3}
+\end{minipage}
+}
+\end{center} 
+}
+
+\newcommand{\fancybox}[2]{
+\hspace*{-2mm}\textcolor{#1}{\rule[-30pt]{.5pt}{30pt}}
+\hspace*{-3pt}\textcolor{#1}{\rule{.3\textwidth}{.5pt}}
+\vspace*{-34pt}
+#2
+\vspace*{-22pt}
+\hfill\hspace*{3pt}\textcolor{#1}{\rule{.3\textwidth}{.5pt}}
+\hspace*{-1mm}\textcolor{#1}{\rule{.5pt}{30pt}}
+}
+
+
+%%
+%\newtheoremstyle{mystyle}%                % Name
+%  {}%                                     % Space above
+%  {}%                                     % Space below
+%  {}%                                     % Body font
+%  {}%                                     % Indent amount
+%  {\bfseries}%                            % Theorem head font
+%  {:}%                                     % Punctuation after theorem head
+%  { }%                                    % Space after theorem head, ' ', or \newline
+%  {}%                                     % Theorem head spec (can be left empty, meaning `normal')
+%
+%\theoremstyle{mystyle}
+%
+%\newtheorem{definition}{Definition}
+\newtheorem{goal}{Proof}
+\newtheorem{compact}{Gaussian Wiretap Channel (Leung and Hellman 1978)}
+\newtheorem{variational}{The Variational Problem}
+\newtheorem{simplification}{Some Simplifications}
+\newtheorem{exple}{Example}
+\newtheorem{FinalG}{Ultimate Goal}
+\newtheorem{QA_2}{What is the \textit{direct} approach?}
+\newtheorem{macroscopic}{Macroscopic Parameters}
+\newtheorem{decoupling}{Decoupling Principle}
+\newtheorem{rs}{Replica Symmetry}
+\newtheorem{FinalQ}{Final Remarks}
+\newtheorem{WhatQ}{What is $\mQ$?}
+\newtheorem{rsb}{Replica Symmetry \red{Breaking}}
+\newtheorem{application}{Application}
+%%%\newtheorem{lemma}{Lemma}[section]
+%%%\newtheorem{remark}{Remark}[section]
+%%
+%%\renewenvironment{proof}{{\bfseries Proof. }}{\hfill$\blacktriangle$\vspace{2mm}}
+%%\declaretheorem[style=definition,qed=$\blacksquare$,numberwithin=section]{definition}
+%%\declaretheorem[style=proposition,qed=$\blacksquare$,numberwithin=section]{proposition}
+%%\declaretheorem[style=lemma,qed=$\blacksquare$,numberwithin=section]{lemma}
+%%\declaretheorem[style=assumption,qed=$\blacksquare$]{assumption}
+%%\declaretheorem[style=remark,numberwithin=section]{remark}
+%%
+%\algnewcommand\algorithmicLet{\textbf{Let}}
+%\algnewcommand\Let{\item[\algorithmicLet]}
+%%
+%\algnewcommand\algorithmicSet{\textbf{Set}}
+%\algnewcommand\Set{\item[\algorithmicSet]}
+%
+%
+%\algnewcommand\algorithmicInitiate{\textbf{Initiate}}
+%\algnewcommand\Initiate{\item[\algorithmicInitiate]}
+%%
+%\algnewcommand\algorithmicStart{\textbf{Begin}}
+%\algnewcommand\Begin{\item[\algorithmicStart]}
+%%
+%\algnewcommand\algorithmicEnd{\textbf{End}}
+%\algnewcommand\End{\item[\algorithmicEnd]}
+%
+%\algnewcommand\algorithmicOutP{\textbf{Output:}}
+%\algnewcommand\Out{\item[\algorithmicOutP]}
+%%\algnewcommand\algorithmicimplement{\textbf{implement}}
+%%\algnewcommand\Implement{\item[\algorithmicimplement]}
+%%
+%%\algnewcommand\algorithmicbegin{\textbf{begin}}
+%%\algnewcommand\BEGIN{\item[\algorithmicbegin]}
+%%
+%\newcommand\NoDo{\renewcommand\algorithmicdo{}}
+%%\algnewcommand\algorithmicEnd{\textbf{end}}
+%%\algnewcommand\ENDall{\item[\algorithmicEnd]}
+%%
+%%\algnewcommand\algorithmicoutput{\textbf{output}}
+%%\algnewcommand\Output{\item[\algorithmicoutput]}
+%
+%\newcounter{bar}
+%\newcommand{\exmpl}[1]{\refstepcounter{bar}\label{#1} \textbf{Example \thebar. }}
+%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%\newcommand{\mj}{\mathrm{J}}
+%\newcommand{\mtX}{\mathrm{\tilde{X}}}
+%\newcommand{\mt}{\mathrm{T}}
+%%\newcommand{\tx}{{\tilde{x}}}
+%%\newcommand{\btx}{\boldsymbol{\tilde{x}}}
