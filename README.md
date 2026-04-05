@@ -146,7 +146,7 @@ Baseline rows use the original clean audio with no mixing, providing a reference
 
 | Dataset | Model | Location |
 |---|---|---|
-| English (LibriSpeech) | `whisper-small` | `openai/whisper-small` via HuggingFace Hub |
+| English (LibriSpeech) | `whisper-tiny` | `openai/whisper-tiny` via HuggingFace Hub |
 | Twi (WAXAL) | `whisper-small-twi` | `TargetTTS/models/whisper-small-twi/final/` on Drive |
 
 Both models use `language="english"` since Twi fine-tuned model was trained with this setting since Whisper does not natively support Twi.
