@@ -1,0 +1,6 @@
+Twi (WAXAL) Mix Distribution
+overlap_ratio  0.1  0.2  0.3  0.4  0.5  1.0
+sir_level_db                               
+-5             668  653  726  719  744  711
+ 0             689  680  707  716  714  699
+ 5             639  697  670  669  715  684

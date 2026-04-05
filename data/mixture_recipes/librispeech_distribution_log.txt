@@ -1,0 +1,6 @@
+English (LibriSpeech) Mix Distribution
+overlap_ratio  0.1  0.2  0.3  0.4  0.5  1.0
+sir_level_db                               
+-5             700  723  669  682  704  701
+ 0             708  726  692  700  666  672
+ 5             686  655  737  707  704  668

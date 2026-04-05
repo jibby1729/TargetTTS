@@ -15,7 +15,10 @@ Text:
 import numpy as np
 import soundfile as sf
 import torch
+from tqdm import tqdm
 from whisper.normalizers import EnglishTextNormalizer
+from datasets import load_from_disk, Audio as HFAudio
+
 
 TARGET_SAMPLE_RATE = 16000
 
@@ -46,7 +49,7 @@ def load_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE) -> torch.Tensor:
     if sr != target_sr:
         raise ValueError(
             f"Expected sample rate {target_sr}, got {sr}. "
-            f"Resampling not yet implemented — LibriSpeech should always be 16 kHz."
+            f"Resample the audio to {target_sr} Hz before calling this function."
         )
 
     # Shape: (1, num_samples)
@@ -105,3 +108,47 @@ def normalize_text(text: str) -> str:
         Normalized transcript string.
     """
     return _text_normalizer(text)
+
+
+# ---------------------------------------------------------------------------
+# Build in-memory cache for WAXAL dataset
+# ---------------------------------------------------------------------------
+
+def build_waxal_cache(disk_path: str, target_sr: int = TARGET_SAMPLE_RATE) -> dict:
+    """
+    Loads the WAXAL HuggingFace dataset from disk and builds an in-memory
+    audio cache keyed by filename (matching the paths stored in the mix CSVs).
+
+    Args:
+        disk_path: Path to the saved HuggingFace dataset directory.
+        target_sr:  Sample rate to decode audio at (default 16kHz).
+
+    Returns:
+        Dict mapping filename keys to peak-normalized float32 numpy arrays.
+    """
+    print(f"Loading WAXAL dataset from {disk_path}...")
+    ds = load_from_disk(disk_path)["test"]
+
+    # Extract raw file paths before decoding
+    ds_undecoded = ds.cast_column("audio", HFAudio(decode=False))
+    paths = [
+        a.get("path") if isinstance(a, dict) else None
+        for a in ds_undecoded["audio"]
+    ]
+    ds = ds.add_column("audio_path", paths)
+    ds = ds.cast_column("audio", HFAudio(sampling_rate=target_sr))
+
+    cache = {}
+    for item in tqdm(ds, desc="Building cache"):
+        path = item["audio_path"]
+        key = path if path is not None else f"waxal_id_{item['id']}"
+        array = item["audio"]["array"].astype(np.float32)
+        
+        # Peak normalize to match preprocess_audio behaviour
+        peak = np.abs(array).max()
+        if peak > 0:
+            array = array / peak
+        cache[key] = array
+
+    print(f"Cached {len(cache)} audio arrays.")
+    return cache
