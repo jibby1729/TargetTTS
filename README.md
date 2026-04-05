@@ -31,7 +31,7 @@ TargetTTS/
 ├── notebooks/
 │   └── test_preprocess.ipynb         # Verify preprocessing on LibriSpeech + WAXAL samples
 │   ├── ADL_Generate_Metadata.ipynb   # Generate mix recipe CSVs (Colab)
-│   ├── ADL_Generate_Mixtures.ipynb    # Generate synthetic mixed audio files (Colab)
+│   ├── ADL_Generate_Mixtures.ipynb   # Generate synthetic mixed audio files (Colab)
 │   └── ADL_Benchmark_Mixtures.ipynb  # Run benchmarking and plot results (Colab)
 └── models/
 │   └── whisper-small-twi/            # Fine-tuned Twi Whisper model
