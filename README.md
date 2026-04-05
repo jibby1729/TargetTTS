@@ -26,12 +26,12 @@ TargetTTS/
 │   └── waxal/                        # Waxal data
 ├── src/
 │   └── preprocess.py                 # Audio loading, normalization, text normalization, and WAXAL cache builder
-│   └── evaluate_baseline.py          # Audio loading, normalization, text normalization, and WAXAL cache builder
+│   └── evaluate_baseline.py
 │                                     
 ├── notebooks/
 │   └── test_preprocess.ipynb         # Verify preprocessing on LibriSpeech + WAXAL samples
 │   ├── ADL_Generate_Metadata.ipynb   # Generate mix recipe CSVs (Colab)
-│   ├── ADL_Audio_Processing.ipynb    # Generate synthetic mixed audio files (Colab)
+│   ├── ADL_Generate_Mixtures.ipynb    # Generate synthetic mixed audio files (Colab)
 │   └── ADL_Benchmark_Mixtures.ipynb  # Run benchmarking and plot results (Colab)
 └── models/
 │   └── whisper-small-twi/            # Fine-tuned Twi Whisper model
@@ -103,7 +103,7 @@ Added for preprocessing WAXAL data.
 ```python
 from src.preprocess import build_waxal_cache
 
-cache = build_waxal_cache("data/waxal/waxalnlp_aka_asr_disk")
+cache = build_waxal_cache("data/waxal")
 # cache: dict mapping filename (e.g. "ak_gh_image_0013_....mp3") -> float32 numpy array
 ```
 
@@ -122,7 +122,7 @@ The three Colab notebooks are in `notebooks/`. Each notebook imports shared util
 | Notebook | Purpose |
 |---|---|
 | `ADL_Generate_Metadata` | Generates mix recipe CSVs for LibriSpeech and WAXAL, pairing target and interferer utterances with random SIR levels and overlap ratios |
-| `ADL_Audio_Processing` | Reads mix recipe CSVs and generates synthetic mixed `.wav` files for both datasets |
+| `ADL_Generate_Mixtures` | Reads mix recipe CSVs and generates synthetic mixed `.wav` files for both datasets |
 | `ADL_Benchmark_Mixtures` | Runs Whisper small inference on all mixed audio files and computes WER, CER, and noise leakage rate across SIR/overlap buckets |
 
 ---
