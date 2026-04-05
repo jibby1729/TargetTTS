@@ -216,3 +216,5 @@ results/
 # Claude Code
 .claude/
 CLAUDE.md
+
+models/
