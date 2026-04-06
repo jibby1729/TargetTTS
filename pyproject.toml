@@ -13,6 +13,7 @@ dependencies = [
     "ipykernel",
     "jiwer>=4.0.0",
     "datasets[audio]",
+    "matplotlib>=3.10.8",
 ]
 
 [tool.uv.sources]

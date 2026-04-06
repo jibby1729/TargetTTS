@@ -1,0 +1,152 @@
+\documentclass{beamer}
+\usetheme{Madrid}
+\usecolortheme{default}
+
+\title[Target-Speaker STT]
+{Target-Speaker Speech-to-Text\\in Overlapping Speech}
+
+\subtitle{ECE1508 -- Applied Deep Learning}
+
+\author[Shah \& Attafuah]
+{Jibran Iqbal Shah \and Yamoah Frimpong Attafuah}
+
+\institute[UofT]
+{
+  Department of Electrical and Computer Engineering\\
+  University of Toronto
+}
+
+\date[AplDL]
+{Applied Deep Learning -- Winter 2026}
+
+\logo{\includegraphics[height=0.8cm]{logo_uoft}}
+
+\definecolor{uoftblue}{RGB}{6,41,88}
+\setbeamercolor{titlelike}{bg=uoftblue}
+\setbeamerfont{title}{series=\bfseries}
+
+\usepackage{booktabs}
+\usepackage{graphicx}
+% Smaller body text globally
+\setbeamerfont{normal text}{size=\small}
+\setbeamerfont{itemize/enumerate body}{size=\small}
+\setbeamerfont{block body}{size=\small}
+
+\begin{document}
+
+\frame{\titlepage}
+
+
+%% SLIDE 1: Problem & Motivation
+\begin{frame}
+\frametitle{The Problem: ASR Fails on Overlapping Speech}
+
+\small
+\begin{itemize}
+    \item Modern ASR systems like Whisper perform well on clean, single-speaker audio
+    \item But in meetings, courtrooms, and media, speakers frequently overlap
+    \item Standard ASR has no notion of which speaker to transcribe and it tries to transcribe everything, which causes errors.
+\end{itemize}
+
+\vspace{0.2cm}
+
+Goal: Given a short enrollment clip of a target speaker and a multi-speaker mixture, transcribe only the target speaker.
+
+\vspace{0.2cm}
+
+\begin{block}{Why does this matter?}
+\small
+Accurate per-speaker transcription is needed in courtrooms, podcasts, debates, and meetings where speakers frequently talk over each other. It can also support full-duplex speech models that need labelled transcriptions of natural conversations with interruptions.
+\end{block}
+
+\end{frame}
+
+
+%% SLIDE 2: Whisper architecture + fine-tuning
+\begin{frame}
+\frametitle{Our ASR Model: Whisper}
+
+\small
+
+We use OpenAI's Whisper as our ASR backbone. Whisper is a transformer-based encoder-decoder model trained on 680{,}000 hours of multilingual speech.
+
+\vspace{0.2cm}
+
+\centering
+\includegraphics[height=0.42\textheight]{whispermodel.png}
+
+\vspace{0.3cm}
+
+\flushleft
+\small
+\begin{itemize}
+    \item English: We use Whisper-tiny (39M params) off the shelf
+    \item Twi (Akan): Whisper does not support Twi natively, so we fine-tuned Whisper-small (244M params) on the WAXAL Akan dataset
+    \item Both models serve as baselines to measure how overlap degrades transcription and whether the trend is observed across languages
+\end{itemize}
+
+\end{frame}
+
+
+%% SLIDE 3: Results -- English + Twi side by side
+\begin{frame}
+\frametitle{Overlap Degrades ASR Across Languages}
+
+\small
+12{,}500 synthetic two-speaker mixtures per language at varying SIR levels and overlap ratios.
+
+\vspace{0.1cm}
+
+\begin{columns}[T]
+\begin{column}{0.48\textwidth}
+    \centering
+    \scriptsize English (Whisper-tiny)
+    \includegraphics[width=\textwidth]{English_Base_Whisper_WER_vs_Overlap.png}
+\end{column}
+\begin{column}{0.48\textwidth}
+    \centering
+    \scriptsize Twi (fine-tuned Whisper-small)
+    \includegraphics[width=\textwidth]{Twi_Finetuned_Whisper_WER_vs_Overlap.png}
+\end{column}
+\end{columns}
+
+\vspace{0.1cm}
+
+\small
+\begin{itemize}
+    \item English clean baseline: 8.1\% WER. At 0\,dB SIR with full overlap, WER exceeds 100\%.
+    \item Twi clean baseline: 34.7\% WER. Same degradation pattern confirms this is language-agnostic.
+\end{itemize}
+
+\end{frame}
+
+
+%% SLIDE 4: Our approach + what's next
+\begin{frame}
+\frametitle{Proposed Solution and Next Steps}
+
+\small
+Our approach: add a speaker-conditioned extraction stage before ASR. Whisper stays frozen.
+
+\vspace{0.2cm}
+
+\begin{enumerate}
+    \item Extract a speaker embedding from a short enrollment clip using a pretrained speaker verification model
+    \item A lightweight trained module uses the embedding to produce a time-frequency mask that isolates the target speaker from the mixture
+    \item Whisper (kept fixed) transcribes the cleaned signal
+\end{enumerate}
+
+\vspace{0.2cm}
+
+\begin{block}{Remaining Work}
+\small
+\begin{itemize}
+    \item Implement speaker embedding extraction and conditioned masking module
+    \item Train on synthetic mixtures, evaluate WER improvement over the unconditioned baseline
+    \item Ablations: enrollment clip length, non-target leakage, cross-lingual transfer
+\end{itemize}
+\end{block}
+
+\end{frame}
+
+\end{document}
