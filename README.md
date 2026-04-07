@@ -142,6 +142,48 @@ Baseline rows use the original clean audio with no mixing, providing a reference
 
 ---
 
+## Speaker-Conditioned Extraction
+
+The extraction pipeline isolates a target speaker's audio from a mixture, given a short enrollment clip of that speaker. The extracted audio is then passed to Whisper for transcription.
+
+### 1. Generate extraction dataset
+
+This creates mixtures with aligned clean sources (target + interferer wavs) and enrollment clips, which are needed to train the extraction network.
+
+```bash
+# Generate recipe CSV with enrollment utterances
+uv run python -m scripts.generate_recipes --num-mixes 12500 --sir-levels 0 5
+
+# Generate mixture + aligned target + aligned interferer wav files
+uv run python -m scripts.generate_mixtures
+```
+
+Output: `data/synthetic_mixtures/librispeech_extraction/` with three files per mix (`{mix_id}.wav`, `{mix_id}_target.wav`, `{mix_id}_interf.wav`).
+
+### 2. Prepare training data
+
+Splits recipes into train/val/test (10000/1250/1250) and pre-computes ECAPA-TDNN speaker embeddings for all enrollment clips.
+
+```bash
+uv run python -m scripts.prepare_training
+```
+
+Output: `data/prepared_training/` with `train.csv`, `val.csv`, `test.csv`, and `embeddings.pt`.
+
+### 3. Train the extraction network
+
+```bash
+uv run python -m scripts.train_extraction --batch-size 16 --num-workers 4 --epochs 30
+```
+
+Best checkpoint is saved to `checkpoints/best_model.pt`. The training prints train loss, val loss, and learning rate each epoch. Early stopping triggers if val loss doesn't improve for 7 epochs.
+
+### 4. Preview mixtures
+
+Open `notebooks/preview_mixtures.ipynb` to listen to enrollment clips, clean targets, interferers, mixtures, and see what Whisper transcribes on the mixed audio.
+
+---
+
 ## Models
 
 | Dataset | Model | Location |
