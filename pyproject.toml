@@ -14,6 +14,8 @@ dependencies = [
     "jiwer>=4.0.0",
     "datasets[audio]",
     "matplotlib>=3.10.8",
+    "librosa>=0.11.0",
+    "speechbrain>=1.1.0",
 ]
 
 [tool.uv.sources]

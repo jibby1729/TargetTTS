@@ -13,7 +13,7 @@ RESULTS_DIR = Path("data/benchmark_results")
 OUTPUT_DIR = Path("presentation")
 
 # Which SIR levels to include
-SIR_LEVELS = [0, 5]
+SIR_LEVELS = [0, 5, 10]
 
 # Colors that are actually distinguishable
 SIR_COLORS = {
@@ -32,8 +32,9 @@ SIR_MARKERS = {
 def plot_wer_vs_overlap(csv_path, title, output_filename, sir_levels=SIR_LEVELS):
     df = pd.read_csv(csv_path)
 
-    # Filter to desired SIR levels
+    # Filter to desired SIR levels and overlap ratio <= 0.5
     df = df[df["sir_level_db"].isin(sir_levels)]
+    df = df[df["overlap_ratio"] <= 0.5]
 
     plt.figure(figsize=(7, 4.5))
 

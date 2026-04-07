@@ -19,6 +19,8 @@
 \usepackage{xcolor}         % colors
 \usepackage{graphicx}       % figures
 \usepackage{float}          % [H] float placement
+\usepackage{tikz}           % architecture diagrams
+\usetikzlibrary{positioning, calc, arrows.meta}
 
 
 \title{Target-Speaker Speech-to-Text in Overlapping Speech}
@@ -133,6 +135,254 @@ We evaluated two pretrained Whisper model sizes on the LibriSpeech \texttt{test-
     \item Design and training of the speaker-conditioned extraction module.
 \end{itemize}
 
+
+\section{Speaker-Conditioned Extraction Network}
+
+This section describes the architecture of the speaker-conditioned extraction module in detail.
+The module is the only trained component in our pipeline; the speaker encoder (ECAPA-TDNN) and the ASR decoder (Whisper) remain frozen.
+
+\subsection{Speaker embedding: ECAPA-TDNN}
+
+The first stage of the pipeline converts a short enrollment utterance $\mathbf{x}_{\text{enroll}} \in \mathbb{R}^{T_e}$ into a fixed-dimensional speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$. We use a pretrained ECAPA-TDNN~\citep{ECAPA} (\texttt{speechbrain/spkrec-ecapa-voxceleb}), kept frozen throughout training.
+
+\subsubsection{Input representation}
+The raw waveform is first converted to 80-dimensional log Mel-filterbank energies (MFBEs), computed with a 25\,ms window and 10\,ms hop (the same framing as our STFT). This yields a matrix $\mathbf{F} \in \mathbb{R}^{80 \times T_f}$ where $T_f$ is the number of frames. Unlike the extraction network, which operates on the full linear-frequency spectrogram to enable inversion, the speaker encoder uses the Mel scale because speaker identity is captured well by the lower-frequency spectral envelope.
+
+\subsubsection{Architecture}
+
+ECAPA-TDNN extends the classical TDNN (Time-Delay Neural Network) with three key innovations. Each component is described below and illustrated in Figure~\ref{fig:ecapa-arch}.
+
+\paragraph{(1) SE-Res2Net blocks.}
+The core of the network is a stack of three \emph{SE-Res2Net} blocks~\citep{Res2Net}. Within each block, the channels of the 1D-convolutional layer are split into $s$ groups that are processed hierarchically: group $g$ receives the sum of its own input and the output of group $g{-}1$, enabling multi-scale temporal feature extraction at different receptive fields within a single layer. After the convolution, a Squeeze-Excitation (SE) module~\citep{SE} recalibrates channel responses:
+\begin{align}
+    \mathbf{s} &= \sigma\!\bigl(\mathbf{W}_2\, \text{ReLU}(\mathbf{W}_1\, \bar{\mathbf{h}})\bigr) \in \mathbb{R}^{C} \\
+    \hat{\mathbf{h}}_t &= \mathbf{s} \odot \mathbf{h}_t
+\end{align}
+where $\bar{\mathbf{h}} = \frac{1}{T_f}\sum_t \mathbf{h}_t$ is the channel-wise mean over time, $\mathbf{W}_1 \in \mathbb{R}^{C/r \times C}$ and $\mathbf{W}_2 \in \mathbb{R}^{C \times C/r}$ are bottleneck projection matrices (reduction ratio $r = 4$), and $\sigma$ is the sigmoid function. This lets the network learn which channels are most informative for distinguishing speakers and suppress irrelevant ones.
+
+Each SE-Res2Net block uses a 1D convolution with dilation factors $d \in \{2, 3, 4\}$ respectively, and all blocks use residual connections.
+
+\paragraph{(2) Multi-layer feature aggregation (MFA).}
+Rather than using only the output of the final block, ECAPA-TDNN concatenates the outputs of \emph{all three} SE-Res2Net blocks along the channel dimension. A $1 \times 1$ convolution then fuses them:
+\[
+    \mathbf{G} = \text{Conv1D}_{1\times1}\!\bigl([\mathbf{H}^{(1)} ; \mathbf{H}^{(2)} ; \mathbf{H}^{(3)}]\bigr) \in \mathbb{R}^{C' \times T_f}
+\]
+This aggregation ensures that both low-level (e.g.\ pitch, formant structure) and high-level (e.g.\ speaking style) features contribute to the final embedding.
+
+\paragraph{(3) Attentive statistical pooling.}
+Variable-length frame sequences must be collapsed to a fixed-size vector. ECAPA-TDNN uses attention-weighted statistics. An attention network computes a scalar weight $\alpha_t$ for each frame:
+\[
+    \alpha_t = \frac{\exp\!\bigl(\mathbf{v}^{\top} f(\mathbf{W} \mathbf{G}_{:,t} + \mathbf{b})\bigr)}
+               {\sum_{t'} \exp\!\bigl(\mathbf{v}^{\top} f(\mathbf{W} \mathbf{G}_{:,t'} + \mathbf{b})\bigr)}
+\]
+The weighted mean and weighted standard deviation are computed and concatenated:
+\begin{align}
+    \boldsymbol{\mu} &= \sum_t \alpha_t\, \mathbf{G}_{:,t}, &
+    \boldsymbol{\sigma} &= \sqrt{\sum_t \alpha_t\, (\mathbf{G}_{:,t} - \boldsymbol{\mu})^2} \\
+    \mathbf{p} &= [\boldsymbol{\mu} ; \boldsymbol{\sigma}] \in \mathbb{R}^{2C'}
+\end{align}
+This is superior to simple mean pooling because the attention mechanism learns to emphasize frames that are most discriminative for speaker identity (e.g.\ voiced segments with clear harmonic structure) and down-weight silence or noise.
+
+\paragraph{Output.}
+A final fully connected layer projects the pooled statistics to the 192-dimensional embedding:
+\[
+    \mathbf{e} = \text{BN}(\mathbf{W}_{\text{out}}\, \mathbf{p} + \mathbf{b}_{\text{out}}) \in \mathbb{R}^{192}
+\]
+During pretraining (on VoxCeleb1+2), an AAM-softmax classification head was used. We discard this head and use only the 192-dim embedding vector, which serves as a compact speaker fingerprint.
+
+\begin{figure}[H]
+\centering
+\resizebox{\textwidth}{!}{%
+\begin{tikzpicture}[
+    node distance=0.5cm and 0.7cm,
+    block/.style={draw, thick, rounded corners, minimum height=0.8cm, minimum width=2.2cm, align=center, font=\small},
+    seblock/.style={block, fill=green!10},
+    pool/.style={block, fill=purple!10},
+    io/.style={block, fill=blue!8},
+    proj/.style={block, fill=orange!10},
+    arr/.style={-stealth, thick},
+]
+
+% --- Row 1: Input through SE-Res2Net blocks ---
+\node[io] (input) {$\mathbf{x}_{\text{enroll}}$};
+\node[proj, right=0.7cm of input] (mfbe) {Mel\\Filterbank};
+\draw[arr] (input) -- (mfbe);
+
+\node[proj, right=0.7cm of mfbe] (conv1) {Conv1D\\$k{=}5$};
+\draw[arr] (mfbe) -- (conv1);
+
+\node[seblock, right=0.7cm of conv1] (se1) {SE-Res2Net\\$d{=}2$};
+\draw[arr] (conv1) -- (se1);
+
+\node[seblock, right=0.7cm of se1] (se2) {SE-Res2Net\\$d{=}3$};
+\draw[arr] (se1) -- (se2);
+
+\node[seblock, right=0.7cm of se2] (se3) {SE-Res2Net\\$d{=}4$};
+\draw[arr] (se2) -- (se3);
+
+% --- Row 2: MFA through output ---
+\node[proj, below=1.4cm of se1] (mfa) {MFA\\$1{\times}1$ Conv};
+
+% Arrow from se3 down and left to MFA
+\draw[arr] (se3.south) -- ++(0, -0.4) -| (mfa.north east);
+
+% Skip connections to MFA
+\draw[arr, gray, dashed] (se1.south) -- ++(0, -0.25) -| ($(mfa.north) + (-0.2, 0)$);
+\draw[arr, gray, dashed] (se2.south) -- ++(0, -0.35) -| ($(mfa.north) + (0.2, 0)$);
+
+\node[pool, right=0.7cm of mfa] (asp) {Attentive\\Stat Pool};
+\draw[arr] (mfa) -- (asp);
+
+\node[proj, right=0.7cm of asp] (fc) {FC + BN};
+\draw[arr] (asp) -- (fc);
+
+\node[io, right=0.7cm of fc] (emb) {$\mathbf{e} \in \mathbb{R}^{192}$};
+\draw[arr] (fc) -- (emb);
+
+\end{tikzpicture}
+}%
+\caption{ECAPA-TDNN architecture. Three SE-Res2Net blocks with increasing dilation extract multi-scale frame features. Multi-layer feature aggregation (MFA, dashed lines) concatenates all block outputs before attentive statistical pooling collapses the sequence to a fixed 192-dim embedding.}
+\label{fig:ecapa-arch}
+\end{figure}
+
+The SpeechBrain pretrained checkpoint achieves 0.80\% equal error rate (EER) on the VoxCeleb1 verification benchmark~\citep{ECAPA}, indicating highly discriminative speaker embeddings. We use this checkpoint frozen without any modification.
+
+\subsection{Extraction network overview}
+
+The extraction network receives two inputs:
+\begin{enumerate}
+    \item The magnitude spectrogram of the mixture, $|\mathbf{X}_{\text{mix}}| \in \mathbb{R}^{F \times T}$, where $F$ is the number of frequency bins and $T$ is the number of time frames.
+    \item A speaker embedding $\mathbf{e} \in \mathbb{R}^{d}$ extracted from a short enrollment utterance of the target speaker by a frozen ECAPA-TDNN model ($d = 192$).
+\end{enumerate}
+
+The output is a soft mask $\mathbf{M} \in [0,1]^{F \times T}$. The estimated target spectrogram is obtained by element-wise multiplication (the $\odot$ operator multiplies each time-frequency bin independently):
+\[
+    |\hat{\mathbf{X}}_{\text{target}}|(f,t) = \mathbf{M}(f,t) \cdot |\mathbf{X}_{\text{mix}}|(f,t), \qquad \forall\; f \in \{1,\dots,F\},\; t \in \{1,\dots,T\}
+\]
+or equivalently in matrix notation: $|\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|$.
+The phase of the original mixture is reused to reconstruct the time-domain waveform via the inverse STFT:
+\[
+    \hat{\mathbf{x}}_{\text{target}} = \text{iSTFT}\!\bigl(|\hat{\mathbf{X}}_{\text{target}}| \cdot e^{j\angle \mathbf{X}_{\text{mix}}}\bigr)
+\]
+
+\subsubsection{STFT parameters and the meaning of $F$ and $T$}
+
+A raw audio waveform is a one-dimensional sequence of amplitude values over time. While this representation captures all information, it does not directly reveal which frequencies are active at each moment. The Short-Time Fourier Transform (STFT) addresses this by sliding a short window across the waveform and computing a discrete Fourier transform within each window. The result is a two-dimensional complex-valued matrix $\mathbf{X} \in \mathbb{C}^{F \times T}$, where each entry $\mathbf{X}(f, t)$ encodes the amplitude and phase of frequency bin $f$ during time frame $t$. Taking the absolute value yields the \emph{magnitude spectrogram} $|\mathbf{X}| \in \mathbb{R}^{F \times T}$, which tells us \emph{how much} energy is present at each frequency and time, and is the representation our mask network operates on.
+
+Crucially, the magnitude spectrogram is \emph{not} a log-mel spectrogram (which is lossy and non-invertible). It retains the full linear frequency resolution, which we need precisely because we must invert back to a waveform after masking via the inverse STFT (iSTFT).
+
+We use the following STFT parameters, which are standard for 16\,kHz speech processing:
+\begin{itemize}
+    \item \textbf{Window length:} 25\,ms $= 400$ samples. Each frame captures a 25\,ms snapshot of the signal, multiplied by a Hann window.
+    \item \textbf{Hop length:} 10\,ms $= 160$ samples. Adjacent frames overlap by 15\,ms and are spaced 10\,ms apart.
+    \item \textbf{FFT size:} $N_{\text{fft}} = 512$. Zero-padded from the 400-sample window.
+    \item \textbf{Frequency bins:} $F = N_{\text{fft}}/2 + 1 = 257$. These are linearly spaced from 0\,Hz to the Nyquist frequency (8000\,Hz), each covering $\approx$31\,Hz.
+    \item \textbf{Time frames:} $T = \lfloor (\text{signal length} - \text{window}) / \text{hop} \rfloor + 1$. A 5-second utterance gives $T \approx 500$ frames.
+\end{itemize}
+
+Each column $\mathbf{X}_{:,t} \in \mathbb{R}^F$ is a vector of $F = 257$ magnitude values representing the frequency content of the 25\,ms window centred at time $t \times 10\,\text{ms}$. Row $f$ across all columns traces how the energy at frequency $f \times 31\,\text{Hz}$ evolves over time.
+
+\subsection{Architecture}
+
+The network follows the VoiceFilter design~\citep{VoiceFilter} and consists of three stages: a convolutional encoder, a recurrent sequence model, and a fully connected mask predictor.
+
+\subsubsection{Convolutional encoder}
+The magnitude spectrogram is processed by a stack of $L = 5$ one-dimensional dilated convolutional layers operating along the time axis. Each layer uses kernel size $k = 3$ with exponentially increasing dilation $2^{l-1}$ for layer $l \in \{1, \dots, L\}$, giving an effective receptive field of $2^L - 1 = 31$ frames ($\approx$310\,ms). Every convolutional layer is followed by layer normalization and ReLU activation:
+\[
+    \mathbf{H}^{(0)} = |\mathbf{X}_{\text{mix}}|^{\top} \in \mathbb{R}^{T \times F}, \qquad
+    \mathbf{H}^{(l)} = \text{ReLU}\!\bigl(\text{LN}\!\bigl(\text{Conv1D}_{d_l}(\mathbf{H}^{(l-1)})\bigr)\bigr)
+\]
+where $d_l$ denotes the dilation factor of layer $l$. The output $\mathbf{H}^{(L)} \in \mathbb{R}^{T \times C}$ is a sequence of $C$-dimensional frame-level representations.
+
+\subsubsection{Speaker conditioning}
+The speaker embedding $\mathbf{e} \in \mathbb{R}^d$ is replicated across all $T$ time frames and concatenated to the CNN output:
+\[
+    \tilde{\mathbf{H}}_t = \bigl[\mathbf{H}^{(L)}_t \;;\; \mathbf{e}\bigr] \in \mathbb{R}^{C + d}, \qquad t = 1, \dots, T
+\]
+This injects speaker identity information at every frame, allowing the subsequent layers to learn a speaker-dependent mask.
+
+\subsubsection{Bidirectional LSTM}
+The conditioned sequence $\tilde{\mathbf{H}} \in \mathbb{R}^{T \times (C+d)}$ is fed into a single-layer bidirectional LSTM (BiLSTM) with hidden size $H = 400$ per direction:
+\begin{align}
+    \overrightarrow{\mathbf{h}}_t &= \text{LSTM}_{\rightarrow}(\tilde{\mathbf{H}}_t, \overrightarrow{\mathbf{h}}_{t-1}) \in \mathbb{R}^{H} \\
+    \overleftarrow{\mathbf{h}}_t &= \text{LSTM}_{\leftarrow}(\tilde{\mathbf{H}}_t, \overleftarrow{\mathbf{h}}_{t+1}) \in \mathbb{R}^{H} \\
+    \mathbf{h}_t &= \bigl[\overrightarrow{\mathbf{h}}_t \;;\; \overleftarrow{\mathbf{h}}_t\bigr] \in \mathbb{R}^{2H}
+\end{align}
+
+The bidirectional formulation is critical for this task. A unidirectional LSTM can only condition frame~$t$'s mask on past frames $1, \dots, t{-}1$. In contrast, the BiLSTM incorporates both past and future context when predicting each frame's mask. This matters for speech extraction because:
+\begin{itemize}
+    \item Phonemes are coarticulated: the realization of a sound depends on both its predecessor and successor. Future context helps disambiguate which spectral energy belongs to the target speaker versus the interferer.
+    \item Overlap regions are locally ambiguous. A frame in which two speakers' harmonics coincide may only become resolvable given the trajectory of the target speaker's pitch in surrounding frames.
+\end{itemize}
+Since our task is offline (the full mixture is available before processing), there is no latency constraint that would prohibit bidirectional processing.
+
+\subsubsection{Mask prediction}
+Two fully connected layers with ReLU and sigmoid activations map the BiLSTM output to a mask value per time-frequency bin:
+\begin{align}
+    \mathbf{z}_t &= \text{ReLU}(\mathbf{W}_1 \mathbf{h}_t + \mathbf{b}_1) \in \mathbb{R}^{F} \\
+    \mathbf{M}_t &= \sigma(\mathbf{W}_2 \mathbf{z}_t + \mathbf{b}_2) \in [0,1]^{F}
+\end{align}
+The sigmoid ensures that every mask value lies in $[0,1]$, so the mask can only attenuate (never amplify) energy from the mixture.
+
+\subsection{Training objective}
+
+The network is trained to minimize the mean squared error between the masked mixture spectrogram and the ground-truth clean target spectrogram:
+\[
+    \mathcal{L} = \frac{1}{FT} \bigl\| \mathbf{M} \odot |\mathbf{X}_{\text{mix}}| - |\mathbf{X}_{\text{target}}| \bigr\|_F^2
+\]
+where $|\mathbf{X}_{\text{target}}|$ is obtained from the aligned clean target waveform generated during synthetic mixture creation.
+
+\subsection{Architecture diagram}
+
+Figure~\ref{fig:extractor-arch} illustrates the extraction network.
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+    node distance=0.6cm and 0.9cm,
+    box/.style={draw, rounded corners, minimum height=0.8cm, minimum width=1.8cm, align=center, font=\small},
+    io/.style={box, fill=blue!8},
+    op/.style={box, fill=orange!12},
+    frozen/.style={box, fill=gray!15, dashed},
+    arr/.style={-stealth, thick},
+]
+
+% Inputs
+\node[io] (mag) {$|\mathbf{X}_{\text{mix}}|$};
+\node[io, below=1.0cm of mag] (enroll) {$\mathbf{x}_{\text{enroll}}$};
+
+% Speaker encoder
+\node[frozen, right=0.8cm of enroll] (ecapa) {ECAPA-TDNN\\(frozen)};
+\draw[arr] (enroll) -- (ecapa);
+
+\node[box, right=0.7cm of ecapa] (emb) {$\mathbf{e} \in \mathbb{R}^{192}$};
+\draw[arr] (ecapa) -- (emb);
+
+% CNN
+\node[op, right=0.8cm of mag] (cnn) {5$\times$ Dilated\\Conv1D};
+\draw[arr] (mag) -- (cnn);
+
+% Concat
+\node[op, right=0.8cm of cnn] (concat) {Concat\\per frame};
+\draw[arr] (cnn) -- (concat);
+\draw[arr] (emb) -- (concat);
+
+% BiLSTM
+\node[op, right=0.8cm of concat] (bilstm) {BiLSTM\\$H{=}400$};
+\draw[arr] (concat) -- (bilstm);
+
+% FC + sigmoid
+\node[op, right=0.8cm of bilstm] (fc) {FC + $\sigma$};
+\draw[arr] (bilstm) -- (fc);
+
+% Mask output
+\node[io, right=0.8cm of fc] (mask) {$\mathbf{M} \in [0,1]^{F \times T}$};
+\draw[arr] (fc) -- (mask);
+
+\end{tikzpicture}
+\caption{Extraction network architecture. The magnitude spectrogram is encoded by dilated convolutions, conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask. Dashed box denotes a frozen pretrained model.}
+\label{fig:extractor-arch}
+\end{figure}
 
 \bibliographystyle{unsrtnat}
 \bibliography{references}
