@@ -23,7 +23,20 @@ from src.extraction_net import ExtractionNet
 from src.dataset import MixtureDataset, pad_collate
 
 
-def train_one_epoch(model, loader, optimizer, device):
+def power_loss(estimated, target, power):
+    eps = 1e-8
+    return nn.functional.mse_loss((estimated + eps).pow(power), (target + eps).pow(power))
+
+
+def compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss=False):
+    if oracle_mask_loss:
+        oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
+        return nn.functional.mse_loss(mask, oracle_mask)
+    estimated = mask * mix_mag
+    return power_loss(estimated, target_mag, power)
+
+
+def train_one_epoch(model, loader, optimizer, device, power, oracle_mask_loss=False):
     model.train()
     total_loss = 0.0
     n_batches = 0
@@ -34,8 +47,7 @@ def train_one_epoch(model, loader, optimizer, device):
         speaker_emb = speaker_emb.to(device)
 
         mask = model(mix_mag, speaker_emb)
-        estimated = mask * mix_mag
-        loss = nn.functional.mse_loss(estimated, target_mag)
+        loss = compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss)
 
         optimizer.zero_grad()
         loss.backward()
@@ -48,7 +60,7 @@ def train_one_epoch(model, loader, optimizer, device):
 
 
 @torch.no_grad()
-def validate(model, loader, device):
+def validate(model, loader, device, power, oracle_mask_loss=False):
     model.eval()
     total_loss = 0.0
     n_batches = 0
@@ -59,8 +71,7 @@ def validate(model, loader, device):
         speaker_emb = speaker_emb.to(device)
 
         mask = model(mix_mag, speaker_emb)
-        estimated = mask * mix_mag
-        loss = nn.functional.mse_loss(estimated, target_mag)
+        loss = compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss)
 
         total_loss += loss.item()
         n_batches += 1
@@ -79,11 +90,20 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--patience", type=int, default=7)
     parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--overfit-batches", type=int, default=0,
+                        help="If > 0, train on only this many batches (overfit test)")
+    parser.add_argument("--power", type=float, default=0.3,
+                        help="Power-law compression exponent for the loss")
+    parser.add_argument("--compress-input", action="store_true",
+                        help="Feed compressed magnitude into the model (uses --power)")
+    parser.add_argument("--oracle-mask-loss", action="store_true",
+                        help="Train mask directly against oracle mask (diagnostic)")
+
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
-    print(f"Config: {args.epochs} epochs, batch size {args.batch_size}, lr {args.lr}")
+    print(f"Config: {args.epochs} epochs, batch size {args.batch_size}, lr {args.lr}, power {args.power}")
     print()
 
     # Load prepared data
@@ -109,7 +129,8 @@ def main():
     )
 
     # Model, optimizer, scheduler
-    model = ExtractionNet().to(device)
+    input_power = args.power if args.compress_input else None
+    model = ExtractionNet(input_power=input_power).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model: {n_params:,} trainable parameters")
 
@@ -117,6 +138,84 @@ def main():
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
         optimizer, mode="min", factor=0.5, patience=3,
     )
+
+    # --- Overfit test mode ---
+    if args.overfit_batches > 0:
+        print(f"\n=== OVERFIT TEST: memorizing {args.overfit_batches} batch(es) ===\n")
+
+        # Grab the fixed batches
+        fixed_batches = []
+        for i, batch in enumerate(train_loader):
+            if i >= args.overfit_batches:
+                break
+            fixed_batches.append(
+                tuple(t.to(device) for t in batch)
+            )
+        print(f"Captured {len(fixed_batches)} batches "
+              f"({sum(b[0].shape[0] for b in fixed_batches)} samples)")
+
+        # Oracle baselines
+        print("\n--- Oracle baselines ---")
+        with torch.no_grad():
+            ones_total = 0.0
+            bounded_total = 0.0
+            unbounded_total = 0.0
+            ones_mask_total = 0.0
+            half_mask_total = 0.0
+            for mix_mag, target_mag, speaker_emb in fixed_batches:
+                # All-ones mask (no masking at all)
+                ones_total += power_loss(mix_mag, target_mag, args.power).item()
+                # Best possible [0,1] mask
+                bounded_oracle = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
+                bounded_total += power_loss(bounded_oracle * mix_mag, target_mag, args.power).item()
+                # Unbounded oracle (can exceed 1.0)
+                unbounded_oracle = target_mag / (mix_mag + 1e-8)
+                unbounded_total += power_loss(unbounded_oracle * mix_mag, target_mag, args.power).item()
+                # Mask-space baselines (for oracle-mask-loss diagnostic)
+                ones_mask_total += nn.functional.mse_loss(
+                    torch.ones_like(bounded_oracle), bounded_oracle).item()
+                half_mask_total += nn.functional.mse_loss(
+                    torch.full_like(bounded_oracle, 0.5), bounded_oracle).item()
+
+            n = len(fixed_batches)
+            print(f"  All-ones (no mask):    {ones_total / n:.6f}")
+            print(f"  Bounded oracle [0,1]:  {bounded_total / n:.6f}")
+            print(f"  Unbounded oracle:      {unbounded_total / n:.6f}")
+            print(f"  Mask MSE (all-ones):   {ones_mask_total / n:.6f}")
+            print(f"  Mask MSE (all-0.5):    {half_mask_total / n:.6f}")
+
+        print()
+        header = f"{'Epoch':>5}  {'Loss':>12}"
+        print(header)
+        print("-" * len(header))
+
+        # Epoch 0: evaluate randomly initialized model
+        model.eval()
+        with torch.no_grad():
+            total_loss = 0.0
+            for mix_mag, target_mag, speaker_emb in fixed_batches:
+                mask = model(mix_mag, speaker_emb)
+                loss = compute_loss(mask, mix_mag, target_mag, args.power, args.oracle_mask_loss)
+                total_loss += loss.item()
+            print(f"    0  {total_loss / len(fixed_batches):>12.6f}")
+
+        for epoch in range(1, args.epochs + 1):
+            model.train()
+            total_loss = 0.0
+            for mix_mag, target_mag, speaker_emb in fixed_batches:
+                mask = model(mix_mag, speaker_emb)
+                loss = compute_loss(mask, mix_mag, target_mag, args.power, args.oracle_mask_loss)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                total_loss += loss.item()
+
+            avg_loss = total_loss / len(fixed_batches)
+            print(f"{epoch:>5}  {avg_loss:>12.6f}")
+
+        print("\nIf loss reached near zero, the model can learn. Setup is correct.")
+        print("If loss plateaued, something is wrong with the architecture or data.")
+        return
 
     # Training loop
     os.makedirs(args.checkpoint_dir, exist_ok=True)
@@ -130,11 +229,17 @@ def main():
     print(header)
     print("-" * len(header))
 
+    # Epoch 0: evaluate randomly initialized model
+    val_loss_0 = validate(model, val_loader, device, args.power, args.oracle_mask_loss)
+    best_val_loss = val_loss_0
+    best_epoch = 0
+    print(f"    0  {'--':>12}  {val_loss_0:>12.6f}  {optimizer.param_groups[0]['lr']:>10.1e}  {'*':>4}")
+
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
 
-        train_loss = train_one_epoch(model, train_loader, optimizer, device)
-        val_loss = validate(model, val_loader, device)
+        train_loss = train_one_epoch(model, train_loader, optimizer, device, args.power, args.oracle_mask_loss)
+        val_loss = validate(model, val_loader, device, args.power, args.oracle_mask_loss)
 
         lr = optimizer.param_groups[0]["lr"]
         scheduler.step(val_loss)

@@ -65,11 +65,12 @@ class ExtractionNet(nn.Module):
     """
 
     def __init__(self, n_freq=STFT_N_FREQ, embedding_dim=192, conv_channels=256,
-                 n_conv_layers=5, lstm_hidden=400):
+                 n_conv_layers=5, lstm_hidden=400, input_power=None):
         super().__init__()
 
         self.n_freq = n_freq
         self.embedding_dim = embedding_dim
+        self.input_power = input_power
 
         # --- Convolutional encoder ---
         # 5 dilated Conv1D layers that process the spectrogram along the time axis.
@@ -120,9 +121,14 @@ class ExtractionNet(nn.Module):
         """
         batch_size, F, T = magnitude_spec.shape
 
+        # Optionally compress the input for the CNN
+        cnn_input = magnitude_spec
+        if self.input_power is not None:
+            cnn_input = (magnitude_spec + 1e-8).pow(self.input_power)
+
         # CNN expects (B, channels, time) — our spectrogram is already (B, F, T)
         # where F acts as the channel dimension and T is the time axis.
-        cnn_out = self.conv_encoder(magnitude_spec)  # (B, C, T)
+        cnn_out = self.conv_encoder(cnn_input)  # (B, C, T)
 
         # Transpose to (B, T, C) for the LSTM
         cnn_out = cnn_out.transpose(1, 2)  # (B, T, C)

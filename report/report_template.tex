@@ -332,6 +332,63 @@ The network is trained to minimize the mean squared error between the masked mix
 \]
 where $|\mathbf{X}_{\text{target}}|$ is obtained from the aligned clean target waveform generated during synthetic mixture creation.
 
+\subsubsection{Power-law compressed loss (VoiceFilter)}
+
+Both $|\mathbf{X}_{\text{mix}}|$ and $|\mathbf{X}_{\text{target}}|$ are $F \times T$ matrices where entry $(f,t)$ is the STFT magnitude at frequency bin $f$ and time frame $t$. Our current loss computes MSE directly on these raw magnitudes:
+\[
+    \mathcal{L}_{\text{raw}} = \frac{1}{FT} \bigl\| \mathbf{M} \odot |\mathbf{X}_{\text{mix}}| - |\mathbf{X}_{\text{target}}| \bigr\|_F^2
+\]
+The problem is dynamic range. A loud vowel bin might have magnitude $10{,}000$ while a quiet fricative bin has magnitude $1$. Consider a single time frame with two bins:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+\textbf{Bin} & \textbf{Target} & \textbf{Predicted} & \textbf{Raw error$^2$} & \textbf{Compressed error$^2$} \\
+\midrule
+Loud vowel     & 10{,}000 & 9{,}000 & $(1000)^2 = 10^6$ & $(100 - 94.9)^2 \approx 26$ \\
+Quiet fricative & 1       & 0       & $(1)^2 = 1$         & $(1 - 0)^2 = 1$              \\
+\midrule
+Ratio (loud/quiet) & & & $1{,}000{,}000 : 1$ & $26 : 1$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+With raw MSE the loud bin's error is $10^6\times$ larger --- the gradient almost entirely says ``fix the loud bin.'' The model has zero incentive to recover the quiet fricative, since getting it completely wrong barely changes the loss. The model finds a ``good enough'' mask for the loud bins and plateaus.
+
+VoiceFilter~\cite{VoiceFilter} fixes this by applying an element-wise power-law compression ($p = 0.3$, following Wilson et al.~\cite{Wilson2018}) to every entry \emph{before} computing MSE:
+\[
+    \mathcal{L}_{\text{compressed}} = \frac{1}{FT} \bigl\| \bigl(\mathbf{M} \odot |\mathbf{X}_{\text{mix}}|\bigr)^{p} - |\mathbf{X}_{\text{target}}|^{p} \bigr\|_F^2
+\]
+The power-law compression is a concave function that grows slowly for large values and fast for small ones, compressing a $10{,}000\!:\!1$ dynamic range down significantly. Now quiet bins (fricatives, unvoiced consonants) contribute meaningful gradients, forcing the model to care about the full spectrum rather than just the peaks. This is a likely fix for our observed training plateau.
+
+\subsubsection{Compressed input features}
+
+The compression should also be applied to the \emph{input} of the network, not only the loss. Instead of feeding raw magnitude $|\mathbf{X}_{\text{mix}}|$ into the CNN, we feed the compressed version:
+\[
+    \text{CNN input} = \bigl(|\mathbf{X}_{\text{mix}}| + \epsilon\bigr)^{p}, \quad p = 0.3, \quad \epsilon = 10^{-8}
+\]
+The mask $\mathbf{M}$ is still applied to the \emph{raw} magnitude for waveform reconstruction:
+\[
+    |\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|
+\]
+Why? Raw magnitudes have values spanning several orders of magnitude. The CNN weights must simultaneously handle entries of $10{,}000$ and $0.001$, which makes learning unstable. Compression normalizes the input distribution so the CNN sees a more uniform feature space.
+
+\subsubsection{Diagnostic: oracle mask supervision}
+
+Our normal training pipeline has two steps chained together: (1) predict a mask $\mathbf{M}$, then (2) compute loss in the spectrogram domain through the power-law compression. If training fails, it is unclear which step is the problem --- is the model unable to learn masks at all, or are the spectrogram-domain gradients the issue?
+
+To isolate this, we can bypass the spectrogram loss entirely and train the model to directly predict the \emph{oracle mask} --- the ideal mask that would perfectly recover the target:
+\[
+    \mathbf{M}^{*}_{f,t} = \text{clamp}\!\left(\frac{|\mathbf{X}_{\text{target}}|_{f,t}}{|\mathbf{X}_{\text{mix}}|_{f,t} + \epsilon},\; 0,\; 1\right)
+\]
+This is simply the ratio of target energy to mixture energy at each bin, clamped to $[0,1]$ to match the sigmoid output range. The loss becomes a direct regression on the mask:
+\[
+    \mathcal{L}_{\text{oracle}} = \frac{1}{FT}\bigl\|\mathbf{M} - \mathbf{M}^{*}\bigr\|_F^2
+\]
+If the model can overfit this loss (drive it to near zero on a single batch), the architecture is capable of learning --- the problem is in the spectrogram-domain loss and its gradients. If it \emph{cannot} overfit even this, something more fundamental is wrong with the architecture or data.
+
 \subsection{Architecture diagram}
 
 Figure~\ref{fig:extractor-arch} illustrates the extraction network.
