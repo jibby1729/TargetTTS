@@ -54,6 +54,42 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 ```
 
+### GPU / CUDA compatibility
+
+By default, `pyproject.toml` pulls PyTorch from the **CUDA 12.8** wheel index
+(`cu128`), which supports all NVIDIA GPUs from Maxwell (sm_50) through Blackwell
+(sm_120, e.g. RTX 5090). This requires an NVIDIA driver that supports CUDA 12.8+
+(driver ≥ 570).
+
+If you need a different CUDA version, edit the index in `pyproject.toml`:
+
+```toml
+# Example: switch to CUDA 12.6
+[tool.uv.sources]
+torch = { index = "pytorch-cu126" }
+torchaudio = { index = "pytorch-cu126" }
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+```
+
+For **CPU-only** (no NVIDIA GPU):
+
+```toml
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchaudio = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+```
+
+Then re-run `uv sync`.
+
 ### System dependency
 
 `ffmpeg` is required for audio decoding and is not managed by `uv`:

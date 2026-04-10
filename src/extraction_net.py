@@ -34,27 +34,32 @@ STFT_N_FFT = 512        # FFT size
 STFT_N_FREQ = STFT_N_FFT // 2 + 1  # 257 frequency bins
 
 
-class ChannelLayerNorm(nn.Module):
+class Conv2dLayerNorm(nn.Module):
     """
-    LayerNorm for Conv1D output where the channel dimension is not last.
+    LayerNorm-equivalent for Conv2D output using GroupNorm(1).
 
-    Conv1D produces (B, C, T), but nn.LayerNorm normalizes the last dimension.
-    This wrapper transposes to (B, T, C), applies LayerNorm, and transposes back.
+    Conv2D produces (B, C, F, T). GroupNorm with num_groups=1 normalizes
+    over all of (C, F, T) per batch element — equivalent to LayerNorm
+    but operates natively on 4D tensors without expensive permutations.
     """
 
-    def __init__(self, n_channels):
+    def __init__(self, n_channels, n_freq=None):
         super().__init__()
-        self.norm = nn.LayerNorm(n_channels)
+        self.norm = nn.GroupNorm(1, n_channels)
 
     def forward(self, x):
-        # x: (B, C, T) -> (B, T, C) -> LayerNorm -> (B, C, T)
-        return self.norm(x.transpose(1, 2)).transpose(1, 2)
+        return self.norm(x)
 
 
 class ExtractionNet(nn.Module):
     """
     Predicts a time-frequency mask to extract a target speaker from a mixture,
     conditioned on a speaker embedding.
+
+    Uses 2D convolutions following the VoiceFilter architecture (Wang et al.,
+    2019), operating on the spectrogram as a 2D time-frequency image. The CNN
+    learns local time-frequency patterns (harmonics, formants) with weight
+    sharing across frequency, then a BiLSTM integrates temporal context.
 
     Input:
         magnitude_spec: (B, F, T) magnitude spectrogram of the mixture
@@ -64,38 +69,67 @@ class ExtractionNet(nn.Module):
         mask: (B, F, T) soft mask with values in [0, 1]
     """
 
-    def __init__(self, n_freq=STFT_N_FREQ, embedding_dim=192, conv_channels=256,
-                 n_conv_layers=5, lstm_hidden=400, input_power=None):
+    def __init__(self, n_freq=STFT_N_FREQ, embedding_dim=192, conv_channels=64,
+                 bottleneck_channels=8, lstm_hidden=400, input_power=None):
         super().__init__()
 
         self.n_freq = n_freq
         self.embedding_dim = embedding_dim
         self.input_power = input_power
+        self.bottleneck_channels = bottleneck_channels
 
-        # --- Convolutional encoder ---
-        # 5 dilated Conv1D layers that process the spectrogram along the time axis.
-        # Dilation doubles each layer: 1, 2, 4, 8, 16
-        # This gives a receptive field of 31 frames (~310ms at 10ms hop).
-        conv_layers = []
-        in_channels = n_freq
-        for i in range(n_conv_layers):
-            dilation = 2 ** i
-            padding = dilation  # "same" padding for kernel size 3
-            conv_layers.append(
-                nn.Conv1d(in_channels, conv_channels, kernel_size=3,
-                          dilation=dilation, padding=padding)
-            )
-            conv_layers.append(ChannelLayerNorm(conv_channels))
-            conv_layers.append(nn.ReLU())
-            in_channels = conv_channels
-
-        self.conv_encoder = nn.Sequential(*conv_layers)
+        # --- 2D Convolutional encoder (VoiceFilter architecture) ---
+        # 8 Conv2D layers operating on (B, C, F, T).
+        # Layers 1-2: separable-style (frequency-only, then time-only)
+        # Layers 3-7: joint time-frequency with increasing dilation in time
+        # Layer 8: 1x1 bottleneck to reduce channels before the LSTM
+        #
+        # Dilation is only applied along the time axis (never frequency),
+        # giving a temporal receptive field of 31 frames (~310ms).
+        # Frequency receptive field stays local (~29 bins ≈ 900 Hz).
+        self.conv_encoder = nn.Sequential(
+            # Layer 1: frequency-only (7, 1) — learns local spectral patterns
+            nn.Conv2d(1, conv_channels, kernel_size=(7, 1), padding=(3, 0)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 2: time-only (1, 7) — learns temporal dynamics
+            nn.Conv2d(conv_channels, conv_channels, kernel_size=(1, 7), padding=(0, 3)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 3: joint (5, 5), no dilation
+            nn.Conv2d(conv_channels, conv_channels, kernel_size=(5, 5),
+                      dilation=(1, 1), padding=(2, 2)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 4: joint (5, 5), dilation 2 in time only
+            nn.Conv2d(conv_channels, conv_channels, kernel_size=(5, 5),
+                      dilation=(1, 2), padding=(2, 4)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 5: joint (5, 5), dilation 4 in time only
+            nn.Conv2d(conv_channels, conv_channels, kernel_size=(5, 5),
+                      dilation=(1, 4), padding=(2, 8)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 6: joint (5, 5), dilation 8 in time only
+            nn.Conv2d(conv_channels, conv_channels, kernel_size=(5, 5),
+                      dilation=(1, 8), padding=(2, 16)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 7: joint (5, 5), dilation 16 in time only
+            nn.Conv2d(conv_channels, conv_channels, kernel_size=(5, 5),
+                      dilation=(1, 16), padding=(2, 32)),
+            Conv2dLayerNorm(conv_channels, n_freq),
+            nn.ReLU(),
+            # Layer 8: 1x1 bottleneck to reduce channels
+            nn.Conv2d(conv_channels, bottleneck_channels, kernel_size=(1, 1)),
+            Conv2dLayerNorm(bottleneck_channels, n_freq),
+            nn.ReLU(),
+        )
 
         # --- Bidirectional LSTM ---
-        # Takes the CNN features concatenated with the speaker embedding.
-        # The BiLSTM sees the full utterance in both directions, which helps
-        # resolve ambiguous frames where both speakers overlap.
-        lstm_input_size = conv_channels + embedding_dim
+        # Input: flattened CNN output (bottleneck_channels * n_freq) + speaker embedding
+        lstm_input_size = bottleneck_channels * n_freq + embedding_dim
         self.lstm = nn.LSTM(
             input_size=lstm_input_size,
             hidden_size=lstm_hidden,
@@ -104,11 +138,11 @@ class ExtractionNet(nn.Module):
             bidirectional=True,
         )
 
-        # --- Mask predictor ---
-        # Two FC layers: the first with ReLU, the second with sigmoid
-        # to produce mask values in [0, 1] for each frequency bin.
-        self.fc1 = nn.Linear(lstm_hidden * 2, n_freq)
-        self.fc2 = nn.Linear(n_freq, n_freq)
+        # --- Mask predictor (VoiceFilter-style) ---
+        # Two FC layers with a wide intermediate (600) to avoid bottlenecking
+        # the per-frequency mask prediction.
+        self.fc1 = nn.Linear(lstm_hidden * 2, 600)
+        self.fc2 = nn.Linear(600, n_freq)
 
     def forward(self, magnitude_spec, speaker_emb):
         """
@@ -126,17 +160,21 @@ class ExtractionNet(nn.Module):
         if self.input_power is not None:
             cnn_input = (magnitude_spec + 1e-8).pow(self.input_power)
 
-        # CNN expects (B, channels, time) — our spectrogram is already (B, F, T)
-        # where F acts as the channel dimension and T is the time axis.
-        cnn_out = self.conv_encoder(cnn_input)  # (B, C, T)
+        # Add a channel dimension: (B, F, T) -> (B, 1, F, T)
+        # The 2D CNN treats the spectrogram as a single-channel image
+        # with frequency as height and time as width.
+        cnn_input = cnn_input.unsqueeze(1)  # (B, 1, F, T)
 
-        # Transpose to (B, T, C) for the LSTM
-        cnn_out = cnn_out.transpose(1, 2)  # (B, T, C)
+        cnn_out = self.conv_encoder(cnn_input)  # (B, bottleneck_channels, F, T)
 
-        # Concatenate speaker embedding at every time frame.
-        # Expand (B, D) to (B, T, D) so we can concatenate along the feature axis.
+        # Flatten channel and frequency dims, then transpose to (B, T, features)
+        # (B, bottleneck_channels, F, T) -> (B, bottleneck_channels * F, T) -> (B, T, bottleneck_channels * F)
+        cnn_out = cnn_out.reshape(batch_size, self.bottleneck_channels * F, T)
+        cnn_out = cnn_out.transpose(1, 2)  # (B, T, bottleneck_channels * F)
+
+        # Concatenate speaker embedding at every time frame
         emb_expanded = speaker_emb.unsqueeze(1).expand(-1, T, -1)  # (B, T, D)
-        lstm_input = torch.cat([cnn_out, emb_expanded], dim=2)  # (B, T, C+D)
+        lstm_input = torch.cat([cnn_out, emb_expanded], dim=2)  # (B, T, 256 + D)
 
         # BiLSTM processes the full sequence in both directions
         lstm_out, _ = self.lstm(lstm_input)  # (B, T, 2*H)

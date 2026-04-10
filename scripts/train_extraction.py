@@ -28,7 +28,13 @@ def power_loss(estimated, target, power):
     return nn.functional.mse_loss((estimated + eps).pow(power), (target + eps).pow(power))
 
 
-def compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss=False):
+def compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss=False,
+                 hybrid_alpha=None):
+    if hybrid_alpha is not None:
+        oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
+        mask_loss = nn.functional.mse_loss(mask, oracle_mask)
+        recon_loss = power_loss(mask * mix_mag, target_mag, power)
+        return hybrid_alpha * mask_loss + (1 - hybrid_alpha) * recon_loss
     if oracle_mask_loss:
         oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
         return nn.functional.mse_loss(mask, oracle_mask)
@@ -36,7 +42,8 @@ def compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss=False):
     return power_loss(estimated, target_mag, power)
 
 
-def train_one_epoch(model, loader, optimizer, device, power, oracle_mask_loss=False):
+def train_one_epoch(model, loader, optimizer, device, power, oracle_mask_loss=False,
+                    hybrid_alpha=None):
     model.train()
     total_loss = 0.0
     n_batches = 0
@@ -47,7 +54,8 @@ def train_one_epoch(model, loader, optimizer, device, power, oracle_mask_loss=Fa
         speaker_emb = speaker_emb.to(device)
 
         mask = model(mix_mag, speaker_emb)
-        loss = compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss)
+        loss = compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss,
+                           hybrid_alpha)
 
         optimizer.zero_grad()
         loss.backward()
@@ -60,9 +68,12 @@ def train_one_epoch(model, loader, optimizer, device, power, oracle_mask_loss=Fa
 
 
 @torch.no_grad()
-def validate(model, loader, device, power, oracle_mask_loss=False):
+def validate(model, loader, device, power, oracle_mask_loss=False, hybrid_alpha=None):
+    """Returns (primary_loss, recon_power_loss, mask_mse) averaged over batches."""
     model.eval()
     total_loss = 0.0
+    total_recon = 0.0
+    total_mask = 0.0
     n_batches = 0
 
     for mix_mag, target_mag, speaker_emb in tqdm(loader, desc="  val  ", leave=False):
@@ -71,12 +82,18 @@ def validate(model, loader, device, power, oracle_mask_loss=False):
         speaker_emb = speaker_emb.to(device)
 
         mask = model(mix_mag, speaker_emb)
-        loss = compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss)
-
+        loss = compute_loss(mask, mix_mag, target_mag, power, oracle_mask_loss,
+                           hybrid_alpha)
         total_loss += loss.item()
+
+        # Dual metrics: always compute both
+        total_recon += power_loss(mask * mix_mag, target_mag, power).item()
+        oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
+        total_mask += nn.functional.mse_loss(mask, oracle_mask).item()
+
         n_batches += 1
 
-    return total_loss / n_batches
+    return total_loss / n_batches, total_recon / n_batches, total_mask / n_batches
 
 
 def main():
@@ -94,10 +111,12 @@ def main():
                         help="If > 0, train on only this many batches (overfit test)")
     parser.add_argument("--power", type=float, default=0.3,
                         help="Power-law compression exponent for the loss")
-    parser.add_argument("--compress-input", action="store_true",
-                        help="Feed compressed magnitude into the model (uses --power)")
     parser.add_argument("--oracle-mask-loss", action="store_true",
                         help="Train mask directly against oracle mask (diagnostic)")
+    parser.add_argument("--hybrid-alpha", type=float, default=0.1,
+                        help="Hybrid loss weight: alpha * mask_MSE + (1-alpha) * power_loss (default: 0.1)")
+    parser.add_argument("--seed", type=int, default=None,
+                        help="Random seed for reproducibility")
 
     args = parser.parse_args()
 
@@ -129,8 +148,7 @@ def main():
     )
 
     # Model, optimizer, scheduler
-    input_power = args.power if args.compress_input else None
-    model = ExtractionNet(input_power=input_power).to(device)
+    model = ExtractionNet(input_power=args.power).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model: {n_params:,} trainable parameters")
 
@@ -141,6 +159,10 @@ def main():
 
     # --- Overfit test mode ---
     if args.overfit_batches > 0:
+        # Seed here (after model init) so the DataLoader produces the same batch
+        # regardless of model architecture
+        if args.seed is not None:
+            torch.manual_seed(args.seed)
         print(f"\n=== OVERFIT TEST: memorizing {args.overfit_batches} batch(es) ===\n")
 
         # Grab the fixed batches
@@ -185,33 +207,47 @@ def main():
             print(f"  Mask MSE (all-0.5):    {half_mask_total / n:.6f}")
 
         print()
-        header = f"{'Epoch':>5}  {'Loss':>12}"
+        header = f"{'Epoch':>5}  {'Train Loss':>12}  {'Recon PL':>12}  {'Mask MSE':>12}"
         print(header)
         print("-" * len(header))
 
+        def eval_dual_metrics(model, batches):
+            """Compute both reconstruction power-loss and mask MSE regardless of training objective."""
+            model.eval()
+            total_recon = 0.0
+            total_mask = 0.0
+            with torch.no_grad():
+                for mix_mag, target_mag, speaker_emb in batches:
+                    mask = model(mix_mag, speaker_emb)
+                    total_recon += power_loss(mask * mix_mag, target_mag, args.power).item()
+                    oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
+                    total_mask += nn.functional.mse_loss(mask, oracle_mask).item()
+            n = len(batches)
+            return total_recon / n, total_mask / n
+
         # Epoch 0: evaluate randomly initialized model
-        model.eval()
-        with torch.no_grad():
-            total_loss = 0.0
-            for mix_mag, target_mag, speaker_emb in fixed_batches:
-                mask = model(mix_mag, speaker_emb)
-                loss = compute_loss(mask, mix_mag, target_mag, args.power, args.oracle_mask_loss)
-                total_loss += loss.item()
-            print(f"    0  {total_loss / len(fixed_batches):>12.6f}")
+        recon_0, mask_0 = eval_dual_metrics(model, fixed_batches)
+        train_loss_0 = mask_0 if (args.oracle_mask_loss and args.hybrid_alpha is None) else recon_0
+        print(f"    0  {train_loss_0:>12.6f}  {recon_0:>12.6f}  {mask_0:>12.6f}")
+
+        torch.cuda.empty_cache()
 
         for epoch in range(1, args.epochs + 1):
             model.train()
             total_loss = 0.0
             for mix_mag, target_mag, speaker_emb in fixed_batches:
                 mask = model(mix_mag, speaker_emb)
-                loss = compute_loss(mask, mix_mag, target_mag, args.power, args.oracle_mask_loss)
+                loss = compute_loss(mask, mix_mag, target_mag, args.power, args.oracle_mask_loss,
+                                   args.hybrid_alpha)
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 total_loss += loss.item()
 
             avg_loss = total_loss / len(fixed_batches)
-            print(f"{epoch:>5}  {avg_loss:>12.6f}")
+            recon, mask_mse = eval_dual_metrics(model, fixed_batches)
+            torch.cuda.empty_cache()
+            print(f"{epoch:>5}  {avg_loss:>12.6f}  {recon:>12.6f}  {mask_mse:>12.6f}")
 
         print("\nIf loss reached near zero, the model can learn. Setup is correct.")
         print("If loss plateaued, something is wrong with the architecture or data.")
@@ -225,21 +261,21 @@ def main():
     best_path = os.path.join(args.checkpoint_dir, "best_model.pt")
 
     print()
-    header = f"{'Epoch':>5}  {'Train Loss':>12}  {'Val Loss':>12}  {'LR':>10}  {'Best':>4}  {'Time':>6}"
+    header = f"{'Epoch':>5}  {'Train Loss':>12}  {'Val Loss':>12}  {'Val Recon':>12}  {'Val MaskMSE':>12}  {'LR':>10}  {'Best':>4}  {'Time':>6}"
     print(header)
     print("-" * len(header))
 
     # Epoch 0: evaluate randomly initialized model
-    val_loss_0 = validate(model, val_loader, device, args.power, args.oracle_mask_loss)
+    val_loss_0, val_recon_0, val_mask_0 = validate(model, val_loader, device, args.power, args.oracle_mask_loss, args.hybrid_alpha)
     best_val_loss = val_loss_0
     best_epoch = 0
-    print(f"    0  {'--':>12}  {val_loss_0:>12.6f}  {optimizer.param_groups[0]['lr']:>10.1e}  {'*':>4}")
+    print(f"    0  {'--':>12}  {val_loss_0:>12.6f}  {val_recon_0:>12.6f}  {val_mask_0:>12.6f}  {optimizer.param_groups[0]['lr']:>10.1e}  {'*':>4}")
 
     for epoch in range(1, args.epochs + 1):
         t0 = time.time()
 
-        train_loss = train_one_epoch(model, train_loader, optimizer, device, args.power, args.oracle_mask_loss)
-        val_loss = validate(model, val_loader, device, args.power, args.oracle_mask_loss)
+        train_loss = train_one_epoch(model, train_loader, optimizer, device, args.power, args.oracle_mask_loss, args.hybrid_alpha)
+        val_loss, val_recon, val_mask = validate(model, val_loader, device, args.power, args.oracle_mask_loss, args.hybrid_alpha)
 
         lr = optimizer.param_groups[0]["lr"]
         scheduler.step(val_loss)
@@ -260,7 +296,7 @@ def main():
 
         elapsed = time.time() - t0
         flag = "*" if is_best else ""
-        print(f"{epoch:>5}  {train_loss:>12.6f}  {val_loss:>12.6f}  {lr:>10.1e}  {flag:>4}  {elapsed:>5.1f}s")
+        print(f"{epoch:>5}  {train_loss:>12.6f}  {val_loss:>12.6f}  {val_recon:>12.6f}  {val_mask:>12.6f}  {lr:>10.1e}  {flag:>4}  {elapsed:>5.1f}s")
 
         if epochs_without_improvement >= args.patience:
             print(f"\nStopping early at epoch {epoch} (no improvement for {args.patience} epochs)")

@@ -287,22 +287,46 @@ Each column $\mathbf{X}_{:,t} \in \mathbb{R}^F$ is a vector of $F = 257$ magnitu
 The network follows the VoiceFilter design~\citep{VoiceFilter} and consists of three stages: a convolutional encoder, a recurrent sequence model, and a fully connected mask predictor.
 
 \subsubsection{Convolutional encoder}
-The magnitude spectrogram is processed by a stack of $L = 5$ one-dimensional dilated convolutional layers operating along the time axis. Each layer uses kernel size $k = 3$ with exponentially increasing dilation $2^{l-1}$ for layer $l \in \{1, \dots, L\}$, giving an effective receptive field of $2^L - 1 = 31$ frames ($\approx$310\,ms). Every convolutional layer is followed by layer normalization and ReLU activation:
+The magnitude spectrogram is treated as a single-channel 2D image $\mathbf{H}^{(0)} \in \mathbb{R}^{1 \times F \times T}$ and processed by a stack of eight 2D convolutional layers, following the VoiceFilter architecture. Each layer is followed by layer normalization and ReLU activation. The layer configurations are:
+
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}clccl@{}}
+\toprule
+\textbf{Layer} & \textbf{Kernel} (time $\times$ freq) & \textbf{Dilation} (time, freq) & \textbf{Filters} & \textbf{Purpose} \\
+\midrule
+1 & $(1, 7)$ & $(1, 1)$ & 64 & Frequency-only: local spectral patterns \\
+2 & $(7, 1)$ & $(1, 1)$ & 64 & Time-only: temporal dynamics \\
+3 & $(5, 5)$ & $(1, 1)$ & 64 & Joint time-frequency \\
+4 & $(5, 5)$ & $(2, 1)$ & 64 & Dilated in time \\
+5 & $(5, 5)$ & $(4, 1)$ & 64 & Dilated in time \\
+6 & $(5, 5)$ & $(8, 1)$ & 64 & Dilated in time \\
+7 & $(5, 5)$ & $(16, 1)$ & 64 & Dilated in time \\
+8 & $(1, 1)$ & $(1, 1)$ & 8  & Channel bottleneck \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Several design choices are worth noting. Layers~1--2 are separable-style convolutions: the $(1, 7)$ kernel scans only frequency to detect local spectral patterns (e.g.\ harmonic spacing), while the $(7, 1)$ kernel scans only time. Layers~3--7 use joint $(5, 5)$ kernels with dilation that increases \emph{only along the time axis} (factors $1, 2, 4, 8, 16$), giving a temporal receptive field of 31 frames ($\approx$310\,ms) --- the same as our previous 1D design. Dilation is not applied along frequency because frequency bins are already densely spaced at $\approx$31\,Hz; skipping bins would miss physically meaningful spectral structure. Layer~8 is a $1 \times 1$ bottleneck that compresses from 64 channels to 8, reducing the feature dimension before the LSTM.
+
+Unlike 1D convolutions (which treat all $F$ frequency bins as independent input channels), 2D convolutions share weights across frequency positions. This provides frequency translation equivariance: a harmonic pattern detected at 500\,Hz is recognized by the same filter at 1000\,Hz, without needing to learn separate weights.
+
+The output is $\mathbf{H}^{(8)} \in \mathbb{R}^{B \times 8 \times F \times T}$. To prepare it for the LSTM, we flatten the channel and frequency dimensions at each time step:
 \[
-    \mathbf{H}^{(0)} = |\mathbf{X}_{\text{mix}}|^{\top} \in \mathbb{R}^{T \times F}, \qquad
-    \mathbf{H}^{(l)} = \text{ReLU}\!\bigl(\text{LN}\!\bigl(\text{Conv1D}_{d_l}(\mathbf{H}^{(l-1)})\bigr)\bigr)
+    \mathbf{g}_t = \text{flatten}(\mathbf{H}^{(8)}_{:,:,t}) \in \mathbb{R}^{8F}, \qquad t = 1, \dots, T
 \]
-where $d_l$ denotes the dilation factor of layer $l$. The output $\mathbf{H}^{(L)} \in \mathbb{R}^{T \times C}$ is a sequence of $C$-dimensional frame-level representations.
+yielding a sequence $\mathbf{G} \in \mathbb{R}^{T \times 8F}$ (with $8F = 2056$ for $F = 257$).
 
 \subsubsection{Speaker conditioning}
-The speaker embedding $\mathbf{e} \in \mathbb{R}^d$ is replicated across all $T$ time frames and concatenated to the CNN output:
+The speaker embedding $\mathbf{e} \in \mathbb{R}^d$ is replicated across all $T$ time frames and concatenated to the flattened CNN output:
 \[
-    \tilde{\mathbf{H}}_t = \bigl[\mathbf{H}^{(L)}_t \;;\; \mathbf{e}\bigr] \in \mathbb{R}^{C + d}, \qquad t = 1, \dots, T
+    \tilde{\mathbf{H}}_t = \bigl[\mathbf{g}_t \;;\; \mathbf{e}\bigr] \in \mathbb{R}^{8F + d}, \qquad t = 1, \dots, T
 \]
 This injects speaker identity information at every frame, allowing the subsequent layers to learn a speaker-dependent mask.
 
 \subsubsection{Bidirectional LSTM}
-The conditioned sequence $\tilde{\mathbf{H}} \in \mathbb{R}^{T \times (C+d)}$ is fed into a single-layer bidirectional LSTM (BiLSTM) with hidden size $H = 400$ per direction:
+The conditioned sequence $\tilde{\mathbf{H}} \in \mathbb{R}^{T \times (8F+d)}$ is fed into a single-layer bidirectional LSTM (BiLSTM) with hidden size $H = 400$ per direction:
 \begin{align}
     \overrightarrow{\mathbf{h}}_t &= \text{LSTM}_{\rightarrow}(\tilde{\mathbf{H}}_t, \overrightarrow{\mathbf{h}}_{t-1}) \in \mathbb{R}^{H} \\
     \overleftarrow{\mathbf{h}}_t &= \text{LSTM}_{\leftarrow}(\tilde{\mathbf{H}}_t, \overleftarrow{\mathbf{h}}_{t+1}) \in \mathbb{R}^{H} \\
@@ -379,11 +403,31 @@ Why? Raw magnitudes have values spanning several orders of magnitude. The CNN we
 
 Our normal training pipeline has two steps chained together: (1) predict a mask $\mathbf{M}$, then (2) compute loss in the spectrogram domain through the power-law compression. If training fails, it is unclear which step is the problem --- is the model unable to learn masks at all, or are the spectrogram-domain gradients the issue?
 
-To isolate this, we can bypass the spectrogram loss entirely and train the model to directly predict the \emph{oracle mask} --- the ideal mask that would perfectly recover the target:
+To isolate this, we can bypass the spectrogram loss entirely and train the model to directly predict the \emph{oracle mask}. Recall that the mask is applied by element-wise multiplication:
+\[
+    |\hat{\mathbf{X}}_{\text{target}}|(f,t) = \mathbf{M}(f,t) \cdot |\mathbf{X}_{\text{mix}}|(f,t)
+\]
+The oracle mask $\mathbf{M}^*$ is the mask that makes this equation exact --- i.e.\ the one that perfectly recovers the target. Solving for $\mathbf{M}$:
+\[
+    \mathbf{M}^*(f,t) \cdot |\mathbf{X}_{\text{mix}}|(f,t) = |\mathbf{X}_{\text{target}}|(f,t)
+    \qquad\Longrightarrow\qquad
+    \mathbf{M}^*(f,t) = \frac{|\mathbf{X}_{\text{target}}|(f,t)}{|\mathbf{X}_{\text{mix}}|(f,t)}
+\]
+We clamp to $[0, 1]$ because the network's sigmoid output can only produce values in this range, and add $\epsilon = 10^{-8}$ for numerical stability:
 \[
     \mathbf{M}^{*}_{f,t} = \text{clamp}\!\left(\frac{|\mathbf{X}_{\text{target}}|_{f,t}}{|\mathbf{X}_{\text{mix}}|_{f,t} + \epsilon},\; 0,\; 1\right)
 \]
-This is simply the ratio of target energy to mixture energy at each bin, clamped to $[0,1]$ to match the sigmoid output range. The loss becomes a direct regression on the mask:
+
+As a concrete example, consider three time-frequency bins:
+\begin{itemize}
+    \item \textbf{Both speakers active:} mixture magnitude 100, target magnitude 60. Oracle mask: $60/100 = 0.6$, so the mask attenuates to recover the target.
+    \item \textbf{Only interferer active:} mixture magnitude 80, target magnitude 0. Oracle mask: $0/80 = 0$, suppressing the bin entirely.
+    \item \textbf{Only target active:} mixture magnitude 50, target magnitude 50. Oracle mask: $50/50 = 1$, passing the bin through unchanged.
+\end{itemize}
+
+The term ``oracle'' reflects that this mask can only be computed during training, where the clean target spectrogram is available. At inference time the target is unknown --- it is precisely what the network must estimate.
+
+The loss becomes a direct regression on the mask:
 \[
     \mathcal{L}_{\text{oracle}} = \frac{1}{FT}\bigl\|\mathbf{M} - \mathbf{M}^{*}\bigr\|_F^2
 \]
@@ -416,7 +460,7 @@ Figure~\ref{fig:extractor-arch} illustrates the extraction network.
 \draw[arr] (ecapa) -- (emb);
 
 % CNN
-\node[op, right=0.8cm of mag] (cnn) {5$\times$ Dilated\\Conv1D};
+\node[op, right=0.8cm of mag] (cnn) {8$\times$ Conv2D\\+ bottleneck};
 \draw[arr] (mag) -- (cnn);
 
 % Concat
@@ -437,7 +481,7 @@ Figure~\ref{fig:extractor-arch} illustrates the extraction network.
 \draw[arr] (fc) -- (mask);
 
 \end{tikzpicture}
-\caption{Extraction network architecture. The magnitude spectrogram is encoded by dilated convolutions, conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask. Dashed box denotes a frozen pretrained model.}
+\caption{Extraction network architecture. The magnitude spectrogram is encoded by eight 2D convolutional layers (with a channel bottleneck), conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask. Dashed box denotes a frozen pretrained model.}
 \label{fig:extractor-arch}
 \end{figure}
 
