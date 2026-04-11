@@ -8,8 +8,8 @@ Runs the full pipeline on the test split:
 Produces per-sample CSVs, aggregated stats, and comparison plots.
 
 Usage:
-    python -m scripts.evaluate_wer --checkpoint checkpoints/best_model.pt --compress-input
-    python -m scripts.evaluate_wer --checkpoint checkpoints/best_model.pt --compress-input --overlap-ratios 0.5 --sir-levels 0
+    python -m scripts.evaluate_wer --checkpoint checkpoints/best_model.pt
+    python -m scripts.evaluate_wer --checkpoint checkpoints/best_model.pt --overlap-ratios 0.5 --sir-levels 0
 """
 
 import argparse

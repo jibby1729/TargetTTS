@@ -12,36 +12,50 @@
 \usepackage{hyperref}       % hyperlinks
 \usepackage{url}            % simple URL typesetting
 \usepackage{booktabs}       % professional-quality tables
-\usepackage{amsmath}        % math environments and \text
 \usepackage{amsfonts}       % blackboard math symbols
 \usepackage{nicefrac}       % compact symbols for 1/2, etc.
 \usepackage{microtype}      % microtypography
 \usepackage{xcolor}         % colors
-\usepackage{graphicx}       % figures
-\usepackage{float}          % [H] float placement
-\usepackage{tikz}           % architecture diagrams
-\usetikzlibrary{positioning, calc, arrows.meta}
 
 
-\title{Target-Speaker Speech-to-Text in Overlapping Speech}
+\title{Project Title}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
 
 
 \author{%
-  Jibran Iqbal Shah\\
-  Department of Electrical and Computer Engineering\\
+  Name\\
+  Department of ...\\
   University of Toronto\\
-  \texttt{jibraniqbal.shah@mail.utoronto.ca} \\
+  \texttt{email} \\
+  % more authors
   \And
-  Yamoah Frimpong Attafuah\\
-  Department of Electrical and Computer Engineering\\
+  Name\\
+  Department of ...\\
   University of Toronto\\
-  \texttt{yamoah.attafuah@mail.utoronto.ca} \\
-  % TODO: add or remove third author
-  %\AND
-  %Third Author \\
-  %Department of Electrical and Computer Engineering\\
-  %University of Toronto\\
-  %\texttt{email} \\
+  \texttt{email} \\
+  % \AND
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
+  % \And
+  % Coauthor \\
+  % Affiliation \\
+  % Address \\
+  % \texttt{email} \\
 }
 
 \begin{document}
@@ -49,445 +63,137 @@
 
 \maketitle
 
-% Abstract, Attestation of Teamwork — not required for briefing; will be added in final report.
+
+\begin{abstract}
+An abstract of the report.
+\end{abstract}
+
+\section*{Attestation of Teamwork}
+Here, you explain how each member in the group has contributed to the project. 
+
 
 
 \section{Introduction}
+Here, you explain briefly the target problem and motivation to solve it via Deep Learning.
 
-Modern speech-to-text systems perform well on clean, single-speaker audio but degrade sharply when speakers overlap~\citep{Chime, overlap}. This is a common occurrence in meetings, court proceedings, and media such as films or talk shows. Rather than attempting full diarization and separation, target-speaker transcription offers a more focused alternative: given a short enrollment clip, transcribe only the speaker of interest.
-
-Additionally, the rise of full-duplex speech-to-speech models is increasing the demand for labelled transcriptions of natural conversations with interruptions~\citep{Moshi, PersonaPlex}. A reliable target-speaker system could automatically generate such labels by isolating each participant and producing timed transcripts, even through overlapping speech.
-
-The objective of this project is to develop a target-speaker speech-to-text system that takes (i) a short enrollment utterance of the target speaker and (ii) a multi-speaker mixture, and outputs only the target speaker's transcript.
-
-
-\section{Problem Formulation}
-
-Let $\mathbf{x}_{\text{mix}} \in \mathbb{R}^T$ be a single-channel audio mixture containing overlapping speech from $N \geq 2$ speakers. We are also given a short enrollment utterance $\mathbf{x}_{\text{enroll}} \in \mathbb{R}^{T_e}$ of the target speaker $s^*$. The goal is to produce a transcript $\hat{y}$ that matches the ground-truth transcript $y^*$ of speaker $s^*$ within the mixture, as measured by word error rate:
-\[
-\text{WER} = \frac{S + D + I}{N_{\text{ref}}}
-\]
-where $S$, $D$, $I$ are the number of substitutions, deletions, and insertions respectively, and $N_{\text{ref}}$ is the number of words in the reference transcript.
-
-A secondary evaluation criterion is non-target leakage: the rate at which words from interfering speakers appear in the output transcript.
+\section{Preliminaries and Problem Formulation}
+Here, you formulate the problem. Specify the ultimate goal. If there are some new concepts that you had to learn to understand this project, you could briefly explain them. 
+	
+\section{Design}
+You explain the details of your design, plot diagrams if needed and name the key components. 
 
 
-\section{Proposed Design}
-
-Our pipeline consists of three stages:
-
-\begin{enumerate}
-    \item \textbf{Speaker embedding extraction.} A pretrained speaker verification model encodes the enrollment utterance $\mathbf{x}_{\text{enroll}}$ into a fixed-dimensional speaker embedding $\mathbf{e} \in \mathbb{R}^d$.
-
-    \item \textbf{Speaker-conditioned extraction.} A lightweight neural module receives the mixture $\mathbf{x}_{\text{mix}}$ (or its spectrogram) together with the speaker embedding $\mathbf{e}$ and produces either (a) a time--frequency mask that isolates the target speaker's signal, or (b) a conditioned representation that is passed directly to the ASR encoder. This module is the only component that is trained; the speaker encoder and ASR model remain frozen.
-
-    \item \textbf{ASR decoding.} A pretrained ASR model transcribes the extracted or conditioned signal into text. We apply text normalization to both predicted and reference transcripts before computing WER, ensuring fair comparison.
-\end{enumerate}
-
-For baselines, we run the ASR model directly on (a) clean single-speaker audio and (b) raw mixtures without any conditioning, to quantify the WER degradation caused by overlap and the improvement provided by speaker conditioning.
 
 
-\section{Data Acquisition}
-
-\subsection{LibriSpeech}
-We use the LibriSpeech corpus, a large-scale dataset of read English speech derived from public-domain audiobooks. All audio is 16\,kHz mono FLAC. We have downloaded the \texttt{dev-clean} and \texttt{test-clean} splits and built JSONL manifest files that index each utterance with its audio path, speaker ID, chapter ID, transcript, frame count, and duration. The manifests enable efficient iteration without loading the full dataset into memory.
-
-\subsection{Synthetic mixture generation (in progress)}
-To evaluate robustness, we will generate synthetic two-speaker mixtures by summing pairs of utterances from different speakers at configurable signal-to-noise ratios (SNR) and overlap ratios. This provides controlled benchmarks for measuring WER as a function of interference severity.
-
-\subsection{Preprocessing}
-Audio files are loaded via \texttt{soundfile}, validated to be 16\,kHz (no resampling is applied), and peak-normalized to $[-1, 1]$. Transcripts are normalized using Whisper's \texttt{EnglishTextNormalizer}, which lowercases text, removes punctuation, expands contractions, and strips filler words. This normalization is applied to both ground-truth and ASR output before WER computation.
+\section{Methodology}
+You should explain the algorithms you have used in your design and include pseudo-code if necessary. If an algorithm is new, you should briefly explain it. You may also name the specific modules and/or libraries you have used for implementation.
 
 
-\section{Progress and Milestones}
+\section{Numerical Experiments}
 
-\subsection{Completed}
-\begin{itemize}
-    \item Dataset selection: LibriSpeech (English) chosen as the primary corpus.
-    \item Audio preprocessing: loading, sample-rate validation, and peak normalization implemented and verified.
-    \item Text normalization: Whisper's \texttt{EnglishTextNormalizer} integrated for consistent WER evaluation.
-    \item WER evaluation pipeline using \texttt{jiwer}, with baseline ASR inference on clean speech.
-\end{itemize}
+You explain the experiments you have conducted to check your implemented design. You must also specify all values and parameters you have considered in the simulation, plot the learning curves or show the test values in the form of tables. If you have a demo test, you could also present it here. Also, if you compare your implementation against a benchmark or a reference setting, you should explain what the benchmark is and specify how you got the results for the benchmark (it's all OK if you get the result for the benchmark from an already implemented code or copy it from a paper, you should just cite them).
 
-\subsection{Preliminary baseline results}
+\subsection{Including Figures}
 
-We evaluated two pretrained Whisper model sizes on the LibriSpeech \texttt{test-clean} split (2620 utterances) to establish clean-speech baselines. These results will serve as the upper-bound reference when we later evaluate on overlapped mixtures.
 
-\begin{table}[H]
-  \caption{Baseline WER (\%) on LibriSpeech \texttt{test-clean} (clean, single-speaker audio).}
-  \label{tab:baseline-wer}
+\begin{figure}
   \centering
-  \begin{tabular}{lcc}
+  \fbox{\rule[-.5cm]{0cm}{4cm} \rule[-.5cm]{4cm}{0cm}}
+  \caption{Sample figure caption.}
+\end{figure}
+
+
+
+\subsection{Including Tables}
+
+\begin{table}
+  \caption{Sample table title}
+  \label{sample-table}
+  \centering
+  \begin{tabular}{lll}
     \toprule
-    Model & Parameters & WER (\%) \\
+    \multicolumn{2}{c}{Part}                   \\
+    \cmidrule(r){1-2}
+    Architecture     & Result 1     & Result 2 \\
     \midrule
-    Whisper-tiny  & 39M  & 7.49 \\
-    Whisper-base  & 74M  & 5.17 \\
+    CNN & 1\%  &1\%   \\
+    ResNet     &1\% &1\%      \\
+    LSTM     &1\%       &   \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-\subsection{Next steps}
-\begin{itemize}
-    \item Synthetic mixture generation with configurable SNR and overlap ratio.
-    \item Baseline ASR on mixtures (unconditioned) to quantify WER degradation from overlapping speech.
-    \item Speaker embedding extraction using a pretrained speaker verification model.
-    \item Design and training of the speaker-conditioned extraction module.
-\end{itemize}
+\section{Discussion}
+You may include answer to research questions here.
+	
+
+\section{Conclusions}
+You should shortly conclude what you learned during project. Also, if you have any idea for further improvement of the results or extension, you may mention it here.
+	
+	
 
 
-\section{Speaker-Conditioned Extraction Network}
-
-This section describes the architecture of the speaker-conditioned extraction module in detail.
-The module is the only trained component in our pipeline; the speaker encoder (ECAPA-TDNN) and the ASR decoder (Whisper) remain frozen.
-
-\subsection{Speaker embedding: ECAPA-TDNN}
-
-The first stage of the pipeline converts a short enrollment utterance $\mathbf{x}_{\text{enroll}} \in \mathbb{R}^{T_e}$ into a fixed-dimensional speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$. We use a pretrained ECAPA-TDNN~\citep{ECAPA} (\texttt{speechbrain/spkrec-ecapa-voxceleb}), kept frozen throughout training.
-
-\subsubsection{Input representation}
-The raw waveform is first converted to 80-dimensional log Mel-filterbank energies (MFBEs), computed with a 25\,ms window and 10\,ms hop (the same framing as our STFT). This yields a matrix $\mathbf{F} \in \mathbb{R}^{80 \times T_f}$ where $T_f$ is the number of frames. Unlike the extraction network, which operates on the full linear-frequency spectrogram to enable inversion, the speaker encoder uses the Mel scale because speaker identity is captured well by the lower-frequency spectral envelope.
-
-\subsubsection{Architecture}
-
-ECAPA-TDNN extends the classical TDNN (Time-Delay Neural Network) with three key innovations. Each component is described below and illustrated in Figure~\ref{fig:ecapa-arch}.
-
-\paragraph{(1) SE-Res2Net blocks.}
-The core of the network is a stack of three \emph{SE-Res2Net} blocks~\citep{Res2Net}. Within each block, the channels of the 1D-convolutional layer are split into $s$ groups that are processed hierarchically: group $g$ receives the sum of its own input and the output of group $g{-}1$, enabling multi-scale temporal feature extraction at different receptive fields within a single layer. After the convolution, a Squeeze-Excitation (SE) module~\citep{SE} recalibrates channel responses:
-\begin{align}
-    \mathbf{s} &= \sigma\!\bigl(\mathbf{W}_2\, \text{ReLU}(\mathbf{W}_1\, \bar{\mathbf{h}})\bigr) \in \mathbb{R}^{C} \\
-    \hat{\mathbf{h}}_t &= \mathbf{s} \odot \mathbf{h}_t
-\end{align}
-where $\bar{\mathbf{h}} = \frac{1}{T_f}\sum_t \mathbf{h}_t$ is the channel-wise mean over time, $\mathbf{W}_1 \in \mathbb{R}^{C/r \times C}$ and $\mathbf{W}_2 \in \mathbb{R}^{C \times C/r}$ are bottleneck projection matrices (reduction ratio $r = 4$), and $\sigma$ is the sigmoid function. This lets the network learn which channels are most informative for distinguishing speakers and suppress irrelevant ones.
-
-Each SE-Res2Net block uses a 1D convolution with dilation factors $d \in \{2, 3, 4\}$ respectively, and all blocks use residual connections.
-
-\paragraph{(2) Multi-layer feature aggregation (MFA).}
-Rather than using only the output of the final block, ECAPA-TDNN concatenates the outputs of \emph{all three} SE-Res2Net blocks along the channel dimension. A $1 \times 1$ convolution then fuses them:
-\[
-    \mathbf{G} = \text{Conv1D}_{1\times1}\!\bigl([\mathbf{H}^{(1)} ; \mathbf{H}^{(2)} ; \mathbf{H}^{(3)}]\bigr) \in \mathbb{R}^{C' \times T_f}
-\]
-This aggregation ensures that both low-level (e.g.\ pitch, formant structure) and high-level (e.g.\ speaking style) features contribute to the final embedding.
-
-\paragraph{(3) Attentive statistical pooling.}
-Variable-length frame sequences must be collapsed to a fixed-size vector. ECAPA-TDNN uses attention-weighted statistics. An attention network computes a scalar weight $\alpha_t$ for each frame:
-\[
-    \alpha_t = \frac{\exp\!\bigl(\mathbf{v}^{\top} f(\mathbf{W} \mathbf{G}_{:,t} + \mathbf{b})\bigr)}
-               {\sum_{t'} \exp\!\bigl(\mathbf{v}^{\top} f(\mathbf{W} \mathbf{G}_{:,t'} + \mathbf{b})\bigr)}
-\]
-The weighted mean and weighted standard deviation are computed and concatenated:
-\begin{align}
-    \boldsymbol{\mu} &= \sum_t \alpha_t\, \mathbf{G}_{:,t}, &
-    \boldsymbol{\sigma} &= \sqrt{\sum_t \alpha_t\, (\mathbf{G}_{:,t} - \boldsymbol{\mu})^2} \\
-    \mathbf{p} &= [\boldsymbol{\mu} ; \boldsymbol{\sigma}] \in \mathbb{R}^{2C'}
-\end{align}
-This is superior to simple mean pooling because the attention mechanism learns to emphasize frames that are most discriminative for speaker identity (e.g.\ voiced segments with clear harmonic structure) and down-weight silence or noise.
-
-\paragraph{Output.}
-A final fully connected layer projects the pooled statistics to the 192-dimensional embedding:
-\[
-    \mathbf{e} = \text{BN}(\mathbf{W}_{\text{out}}\, \mathbf{p} + \mathbf{b}_{\text{out}}) \in \mathbb{R}^{192}
-\]
-During pretraining (on VoxCeleb1+2), an AAM-softmax classification head was used. We discard this head and use only the 192-dim embedding vector, which serves as a compact speaker fingerprint.
-
-\begin{figure}[H]
-\centering
-\resizebox{\textwidth}{!}{%
-\begin{tikzpicture}[
-    node distance=0.5cm and 0.7cm,
-    block/.style={draw, thick, rounded corners, minimum height=0.8cm, minimum width=2.2cm, align=center, font=\small},
-    seblock/.style={block, fill=green!10},
-    pool/.style={block, fill=purple!10},
-    io/.style={block, fill=blue!8},
-    proj/.style={block, fill=orange!10},
-    arr/.style={-stealth, thick},
-]
-
-% --- Row 1: Input through SE-Res2Net blocks ---
-\node[io] (input) {$\mathbf{x}_{\text{enroll}}$};
-\node[proj, right=0.7cm of input] (mfbe) {Mel\\Filterbank};
-\draw[arr] (input) -- (mfbe);
-
-\node[proj, right=0.7cm of mfbe] (conv1) {Conv1D\\$k{=}5$};
-\draw[arr] (mfbe) -- (conv1);
-
-\node[seblock, right=0.7cm of conv1] (se1) {SE-Res2Net\\$d{=}2$};
-\draw[arr] (conv1) -- (se1);
-
-\node[seblock, right=0.7cm of se1] (se2) {SE-Res2Net\\$d{=}3$};
-\draw[arr] (se1) -- (se2);
-
-\node[seblock, right=0.7cm of se2] (se3) {SE-Res2Net\\$d{=}4$};
-\draw[arr] (se2) -- (se3);
-
-% --- Row 2: MFA through output ---
-\node[proj, below=1.4cm of se1] (mfa) {MFA\\$1{\times}1$ Conv};
-
-% Arrow from se3 down and left to MFA
-\draw[arr] (se3.south) -- ++(0, -0.4) -| (mfa.north east);
-
-% Skip connections to MFA
-\draw[arr, gray, dashed] (se1.south) -- ++(0, -0.25) -| ($(mfa.north) + (-0.2, 0)$);
-\draw[arr, gray, dashed] (se2.south) -- ++(0, -0.35) -| ($(mfa.north) + (0.2, 0)$);
-
-\node[pool, right=0.7cm of mfa] (asp) {Attentive\\Stat Pool};
-\draw[arr] (mfa) -- (asp);
-
-\node[proj, right=0.7cm of asp] (fc) {FC + BN};
-\draw[arr] (asp) -- (fc);
-
-\node[io, right=0.7cm of fc] (emb) {$\mathbf{e} \in \mathbb{R}^{192}$};
-\draw[arr] (fc) -- (emb);
-
-\end{tikzpicture}
-}%
-\caption{ECAPA-TDNN architecture. Three SE-Res2Net blocks with increasing dilation extract multi-scale frame features. Multi-layer feature aggregation (MFA, dashed lines) concatenates all block outputs before attentive statistical pooling collapses the sequence to a fixed 192-dim embedding.}
-\label{fig:ecapa-arch}
-\end{figure}
-
-The SpeechBrain pretrained checkpoint achieves 0.80\% equal error rate (EER) on the VoxCeleb1 verification benchmark~\citep{ECAPA}, indicating highly discriminative speaker embeddings. We use this checkpoint frozen without any modification.
-
-\subsection{Extraction network overview}
-
-The extraction network receives two inputs:
-\begin{enumerate}
-    \item The magnitude spectrogram of the mixture, $|\mathbf{X}_{\text{mix}}| \in \mathbb{R}^{F \times T}$, where $F$ is the number of frequency bins and $T$ is the number of time frames.
-    \item A speaker embedding $\mathbf{e} \in \mathbb{R}^{d}$ extracted from a short enrollment utterance of the target speaker by a frozen ECAPA-TDNN model ($d = 192$).
-\end{enumerate}
-
-The output is a soft mask $\mathbf{M} \in [0,1]^{F \times T}$. The estimated target spectrogram is obtained by element-wise multiplication (the $\odot$ operator multiplies each time-frequency bin independently):
-\[
-    |\hat{\mathbf{X}}_{\text{target}}|(f,t) = \mathbf{M}(f,t) \cdot |\mathbf{X}_{\text{mix}}|(f,t), \qquad \forall\; f \in \{1,\dots,F\},\; t \in \{1,\dots,T\}
-\]
-or equivalently in matrix notation: $|\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|$.
-The phase of the original mixture is reused to reconstruct the time-domain waveform via the inverse STFT:
-\[
-    \hat{\mathbf{x}}_{\text{target}} = \text{iSTFT}\!\bigl(|\hat{\mathbf{X}}_{\text{target}}| \cdot e^{j\angle \mathbf{X}_{\text{mix}}}\bigr)
-\]
-
-\subsubsection{STFT parameters and the meaning of $F$ and $T$}
-
-A raw audio waveform is a one-dimensional sequence of amplitude values over time. While this representation captures all information, it does not directly reveal which frequencies are active at each moment. The Short-Time Fourier Transform (STFT) addresses this by sliding a short window across the waveform and computing a discrete Fourier transform within each window. The result is a two-dimensional complex-valued matrix $\mathbf{X} \in \mathbb{C}^{F \times T}$, where each entry $\mathbf{X}(f, t)$ encodes the amplitude and phase of frequency bin $f$ during time frame $t$. Taking the absolute value yields the \emph{magnitude spectrogram} $|\mathbf{X}| \in \mathbb{R}^{F \times T}$, which tells us \emph{how much} energy is present at each frequency and time, and is the representation our mask network operates on.
-
-Crucially, the magnitude spectrogram is \emph{not} a log-mel spectrogram (which is lossy and non-invertible). It retains the full linear frequency resolution, which we need precisely because we must invert back to a waveform after masking via the inverse STFT (iSTFT).
-
-We use the following STFT parameters, which are standard for 16\,kHz speech processing:
-\begin{itemize}
-    \item \textbf{Window length:} 25\,ms $= 400$ samples. Each frame captures a 25\,ms snapshot of the signal, multiplied by a Hann window.
-    \item \textbf{Hop length:} 10\,ms $= 160$ samples. Adjacent frames overlap by 15\,ms and are spaced 10\,ms apart.
-    \item \textbf{FFT size:} $N_{\text{fft}} = 512$. Zero-padded from the 400-sample window.
-    \item \textbf{Frequency bins:} $F = N_{\text{fft}}/2 + 1 = 257$. These are linearly spaced from 0\,Hz to the Nyquist frequency (8000\,Hz), each covering $\approx$31\,Hz.
-    \item \textbf{Time frames:} $T = \lfloor (\text{signal length} - \text{window}) / \text{hop} \rfloor + 1$. A 5-second utterance gives $T \approx 500$ frames.
-\end{itemize}
-
-Each column $\mathbf{X}_{:,t} \in \mathbb{R}^F$ is a vector of $F = 257$ magnitude values representing the frequency content of the 25\,ms window centred at time $t \times 10\,\text{ms}$. Row $f$ across all columns traces how the energy at frequency $f \times 31\,\text{Hz}$ evolves over time.
-
-\subsection{Architecture}
-
-The network follows the VoiceFilter design~\citep{VoiceFilter} and consists of three stages: a convolutional encoder, a recurrent sequence model, and a fully connected mask predictor.
-
-\subsubsection{Convolutional encoder}
-The magnitude spectrogram is treated as a single-channel 2D image $\mathbf{H}^{(0)} \in \mathbb{R}^{1 \times F \times T}$ and processed by a stack of eight 2D convolutional layers, following the VoiceFilter architecture. Each layer is followed by layer normalization and ReLU activation. The layer configurations are:
-
-\begin{table}[H]
-\centering
+\section*{References}
+Include all references here. It’s important to have your references cited.
+\medskip
+{
 \small
-\begin{tabular}{@{}clccl@{}}
-\toprule
-\textbf{Layer} & \textbf{Kernel} (time $\times$ freq) & \textbf{Dilation} (time, freq) & \textbf{Filters} & \textbf{Purpose} \\
-\midrule
-1 & $(1, 7)$ & $(1, 1)$ & 64 & Frequency-only: local spectral patterns \\
-2 & $(7, 1)$ & $(1, 1)$ & 64 & Time-only: temporal dynamics \\
-3 & $(5, 5)$ & $(1, 1)$ & 64 & Joint time-frequency \\
-4 & $(5, 5)$ & $(2, 1)$ & 64 & Dilated in time \\
-5 & $(5, 5)$ & $(4, 1)$ & 64 & Dilated in time \\
-6 & $(5, 5)$ & $(8, 1)$ & 64 & Dilated in time \\
-7 & $(5, 5)$ & $(16, 1)$ & 64 & Dilated in time \\
-8 & $(1, 1)$ & $(1, 1)$ & 8  & Channel bottleneck \\
-\bottomrule
-\end{tabular}
-\end{table}
 
-Several design choices are worth noting. Layers~1--2 are separable-style convolutions: the $(1, 7)$ kernel scans only frequency to detect local spectral patterns (e.g.\ harmonic spacing), while the $(7, 1)$ kernel scans only time. Layers~3--7 use joint $(5, 5)$ kernels with dilation that increases \emph{only along the time axis} (factors $1, 2, 4, 8, 16$), giving a temporal receptive field of 31 frames ($\approx$310\,ms) --- the same as our previous 1D design. Dilation is not applied along frequency because frequency bins are already densely spaced at $\approx$31\,Hz; skipping bins would miss physically meaningful spectral structure. Layer~8 is a $1 \times 1$ bottleneck that compresses from 64 channels to 8, reducing the feature dimension before the LSTM.
 
-Unlike 1D convolutions (which treat all $F$ frequency bins as independent input channels), 2D convolutions share weights across frequency positions. This provides frequency translation equivariance: a harmonic pattern detected at 500\,Hz is recognized by the same filter at 1000\,Hz, without needing to learn separate weights.
+[1] Alexander, J.A.\ \& Mozer, M.C.\ (1995) Template-based algorithms for
+connectionist rule extraction. In G.\ Tesauro, D.S.\ Touretzky and T.K.\ Leen
+(eds.), {\it Advances in Neural Information Processing Systems 7},
+pp.\ 609--616. Cambridge, MA: MIT Press.
 
-The output is $\mathbf{H}^{(8)} \in \mathbb{R}^{B \times 8 \times F \times T}$. To prepare it for the LSTM, we flatten the channel and frequency dimensions at each time step:
-\[
-    \mathbf{g}_t = \text{flatten}(\mathbf{H}^{(8)}_{:,:,t}) \in \mathbb{R}^{8F}, \qquad t = 1, \dots, T
-\]
-yielding a sequence $\mathbf{G} \in \mathbb{R}^{T \times 8F}$ (with $8F = 2056$ for $F = 257$).
 
-\subsubsection{Speaker conditioning}
-The speaker embedding $\mathbf{e} \in \mathbb{R}^d$ is replicated across all $T$ time frames and concatenated to the flattened CNN output:
-\[
-    \tilde{\mathbf{H}}_t = \bigl[\mathbf{g}_t \;;\; \mathbf{e}\bigr] \in \mathbb{R}^{8F + d}, \qquad t = 1, \dots, T
-\]
-This injects speaker identity information at every frame, allowing the subsequent layers to learn a speaker-dependent mask.
+[2] Bower, J.M.\ \& Beeman, D.\ (1995) {\it The Book of GENESIS: Exploring
+  Realistic Neural Models with the GEneral NEural SImulation System.}  New York:
+TELOS/Springer--Verlag.
 
-\subsubsection{Bidirectional LSTM}
-The conditioned sequence $\tilde{\mathbf{H}} \in \mathbb{R}^{T \times (8F+d)}$ is fed into a single-layer bidirectional LSTM (BiLSTM) with hidden size $H = 400$ per direction:
-\begin{align}
-    \overrightarrow{\mathbf{h}}_t &= \text{LSTM}_{\rightarrow}(\tilde{\mathbf{H}}_t, \overrightarrow{\mathbf{h}}_{t-1}) \in \mathbb{R}^{H} \\
-    \overleftarrow{\mathbf{h}}_t &= \text{LSTM}_{\leftarrow}(\tilde{\mathbf{H}}_t, \overleftarrow{\mathbf{h}}_{t+1}) \in \mathbb{R}^{H} \\
-    \mathbf{h}_t &= \bigl[\overrightarrow{\mathbf{h}}_t \;;\; \overleftarrow{\mathbf{h}}_t\bigr] \in \mathbb{R}^{2H}
-\end{align}
 
-The bidirectional formulation is critical for this task. A unidirectional LSTM can only condition frame~$t$'s mask on past frames $1, \dots, t{-}1$. In contrast, the BiLSTM incorporates both past and future context when predicting each frame's mask. This matters for speech extraction because:
+[3] Hasselmo, M.E., Schnell, E.\ \& Barkai, E.\ (1995) Dynamics of learning and
+recall at excitatory recurrent synapses and cholinergic modulation in rat
+hippocampal region CA3. {\it Journal of Neuroscience} {\bf 15}(7):5249-5262.
+}
+
+\section*{Appendix}
+Any descriptions about supplementary materials go here.
+
+
+\newpage
+\section*{Use of AI}
+Please describe in a paragraph how you have used AI to accomplish this project. If you have not used AI, please indicate it here. 
+
+\section*{Contest for Information Sharing}
+As part of this course, we may share selected project materials (e.g., reports, presentation slides, and presentation recordings) on the course webpage as learning resources for future students. Additionally, we may use anonymized project information for internal statistical analysis of course outcomes. Please indicate your preferences below. \textit{Your choices will not affect your grade in any way.}
+
+\subsection*{Consent for Sharing Project Materials}
+\textit{Please keep the item you wish and remove the other one.}
+
 \begin{itemize}
-    \item Phonemes are coarticulated: the realization of a sound depends on both its predecessor and successor. Future context helps disambiguate which spectral energy belongs to the target speaker versus the interferer.
-    \item Overlap regions are locally ambiguous. A frame in which two speakers' harmonics coincide may only become resolvable given the trajectory of the target speaker's pitch in surrounding frames.
-\end{itemize}
-Since our task is offline (the full mixture is available before processing), there is no latency constraint that would prohibit bidirectional processing.
-
-\subsubsection{Mask prediction}
-Two fully connected layers with ReLU and sigmoid activations map the BiLSTM output to a mask value per time-frequency bin:
-\begin{align}
-    \mathbf{z}_t &= \text{ReLU}(\mathbf{W}_1 \mathbf{h}_t + \mathbf{b}_1) \in \mathbb{R}^{F} \\
-    \mathbf{M}_t &= \sigma(\mathbf{W}_2 \mathbf{z}_t + \mathbf{b}_2) \in [0,1]^{F}
-\end{align}
-The sigmoid ensures that every mask value lies in $[0,1]$, so the mask can only attenuate (never amplify) energy from the mixture.
-
-\subsection{Training objective}
-
-The network is trained to minimize the mean squared error between the masked mixture spectrogram and the ground-truth clean target spectrogram:
-\[
-    \mathcal{L} = \frac{1}{FT} \bigl\| \mathbf{M} \odot |\mathbf{X}_{\text{mix}}| - |\mathbf{X}_{\text{target}}| \bigr\|_F^2
-\]
-where $|\mathbf{X}_{\text{target}}|$ is obtained from the aligned clean target waveform generated during synthetic mixture creation.
-
-\subsubsection{Power-law compressed loss (VoiceFilter)}
-
-Both $|\mathbf{X}_{\text{mix}}|$ and $|\mathbf{X}_{\text{target}}|$ are $F \times T$ matrices where entry $(f,t)$ is the STFT magnitude at frequency bin $f$ and time frame $t$. Our current loss computes MSE directly on these raw magnitudes:
-\[
-    \mathcal{L}_{\text{raw}} = \frac{1}{FT} \bigl\| \mathbf{M} \odot |\mathbf{X}_{\text{mix}}| - |\mathbf{X}_{\text{target}}| \bigr\|_F^2
-\]
-The problem is dynamic range. A loud vowel bin might have magnitude $10{,}000$ while a quiet fricative bin has magnitude $1$. Consider a single time frame with two bins:
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-\textbf{Bin} & \textbf{Target} & \textbf{Predicted} & \textbf{Raw error$^2$} & \textbf{Compressed error$^2$} \\
-\midrule
-Loud vowel     & 10{,}000 & 9{,}000 & $(1000)^2 = 10^6$ & $(100 - 94.9)^2 \approx 26$ \\
-Quiet fricative & 1       & 0       & $(1)^2 = 1$         & $(1 - 0)^2 = 1$              \\
-\midrule
-Ratio (loud/quiet) & & & $1{,}000{,}000 : 1$ & $26 : 1$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-With raw MSE the loud bin's error is $10^6\times$ larger --- the gradient almost entirely says ``fix the loud bin.'' The model has zero incentive to recover the quiet fricative, since getting it completely wrong barely changes the loss. The model finds a ``good enough'' mask for the loud bins and plateaus.
-
-VoiceFilter~\cite{VoiceFilter} fixes this by applying an element-wise power-law compression ($p = 0.3$, following Wilson et al.~\cite{Wilson2018}) to every entry \emph{before} computing MSE:
-\[
-    \mathcal{L}_{\text{compressed}} = \frac{1}{FT} \bigl\| \bigl(\mathbf{M} \odot |\mathbf{X}_{\text{mix}}|\bigr)^{p} - |\mathbf{X}_{\text{target}}|^{p} \bigr\|_F^2
-\]
-The power-law compression is a concave function that grows slowly for large values and fast for small ones, compressing a $10{,}000\!:\!1$ dynamic range down significantly. Now quiet bins (fricatives, unvoiced consonants) contribute meaningful gradients, forcing the model to care about the full spectrum rather than just the peaks. This is a likely fix for our observed training plateau.
-
-\subsubsection{Compressed input features}
-
-The compression should also be applied to the \emph{input} of the network, not only the loss. Instead of feeding raw magnitude $|\mathbf{X}_{\text{mix}}|$ into the CNN, we feed the compressed version:
-\[
-    \text{CNN input} = \bigl(|\mathbf{X}_{\text{mix}}| + \epsilon\bigr)^{p}, \quad p = 0.3, \quad \epsilon = 10^{-8}
-\]
-The mask $\mathbf{M}$ is still applied to the \emph{raw} magnitude for waveform reconstruction:
-\[
-    |\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|
-\]
-Why? Raw magnitudes have values spanning several orders of magnitude. The CNN weights must simultaneously handle entries of $10{,}000$ and $0.001$, which makes learning unstable. Compression normalizes the input distribution so the CNN sees a more uniform feature space.
-
-\subsubsection{Diagnostic: oracle mask supervision}
-
-Our normal training pipeline has two steps chained together: (1) predict a mask $\mathbf{M}$, then (2) compute loss in the spectrogram domain through the power-law compression. If training fails, it is unclear which step is the problem --- is the model unable to learn masks at all, or are the spectrogram-domain gradients the issue?
-
-To isolate this, we can bypass the spectrogram loss entirely and train the model to directly predict the \emph{oracle mask}. Recall that the mask is applied by element-wise multiplication:
-\[
-    |\hat{\mathbf{X}}_{\text{target}}|(f,t) = \mathbf{M}(f,t) \cdot |\mathbf{X}_{\text{mix}}|(f,t)
-\]
-The oracle mask $\mathbf{M}^*$ is the mask that makes this equation exact --- i.e.\ the one that perfectly recovers the target. Solving for $\mathbf{M}$:
-\[
-    \mathbf{M}^*(f,t) \cdot |\mathbf{X}_{\text{mix}}|(f,t) = |\mathbf{X}_{\text{target}}|(f,t)
-    \qquad\Longrightarrow\qquad
-    \mathbf{M}^*(f,t) = \frac{|\mathbf{X}_{\text{target}}|(f,t)}{|\mathbf{X}_{\text{mix}}|(f,t)}
-\]
-We clamp to $[0, 1]$ because the network's sigmoid output can only produce values in this range, and add $\epsilon = 10^{-8}$ for numerical stability:
-\[
-    \mathbf{M}^{*}_{f,t} = \text{clamp}\!\left(\frac{|\mathbf{X}_{\text{target}}|_{f,t}}{|\mathbf{X}_{\text{mix}}|_{f,t} + \epsilon},\; 0,\; 1\right)
-\]
-
-As a concrete example, consider three time-frequency bins:
-\begin{itemize}
-    \item \textbf{Both speakers active:} mixture magnitude 100, target magnitude 60. Oracle mask: $60/100 = 0.6$, so the mask attenuates to recover the target.
-    \item \textbf{Only interferer active:} mixture magnitude 80, target magnitude 0. Oracle mask: $0/80 = 0$, suppressing the bin entirely.
-    \item \textbf{Only target active:} mixture magnitude 50, target magnitude 50. Oracle mask: $50/50 = 1$, passing the bin through unchanged.
+	\item All group members consent to allow the project materials (report, slides, and presentation recording) to be shared on the course page for future students.
+	\item The group members do \textbf{not} consent to allow the project materials (report, slides, and presentation recording) to be shared on the course page for future students.
 \end{itemize}
 
-The term ``oracle'' reflects that this mask can only be computed during training, where the clean target spectrogram is available. At inference time the target is unknown --- it is precisely what the network must estimate.
 
-The loss becomes a direct regression on the mask:
-\[
-    \mathcal{L}_{\text{oracle}} = \frac{1}{FT}\bigl\|\mathbf{M} - \mathbf{M}^{*}\bigr\|_F^2
-\]
-If the model can overfit this loss (drive it to near zero on a single batch), the architecture is capable of learning --- the problem is in the spectrogram-domain loss and its gradients. If it \emph{cannot} overfit even this, something more fundamental is wrong with the architecture or data.
 
-\subsection{Architecture diagram}
+\subsection*{Consent for Use of Project Information in Statistical Analysis}
+\textit{Please keep the item you wish and remove the other one.}
+\begin{itemize}
+	\item All group members consent to allow anonymized information about the project (e.g., topic, methods, outcomes, grades) to be used by the instructor for statistical analysis and course improvement.
+	\item The group members do \textbf{not} consent to allow anonymized information about the project (e.g., topic, methods, outcomes, grades) to be used by the instructor for statistical analysis and course improvement.
+\end{itemize}
 
-Figure~\ref{fig:extractor-arch} illustrates the extraction network.
+\subsection*{Optional Comments}
+\textit{Please list any specific conditions or comments here.}
 
-\begin{figure}[H]
-\centering
-\begin{tikzpicture}[
-    node distance=0.6cm and 0.9cm,
-    box/.style={draw, rounded corners, minimum height=0.8cm, minimum width=1.8cm, align=center, font=\small},
-    io/.style={box, fill=blue!8},
-    op/.style={box, fill=orange!12},
-    frozen/.style={box, fill=gray!15, dashed},
-    arr/.style={-stealth, thick},
-]
+\subsection*{Group Identification}
 
-% Inputs
-\node[io] (mag) {$|\mathbf{X}_{\text{mix}}|$};
-\node[io, below=1.0cm of mag] (enroll) {$\mathbf{x}_{\text{enroll}}$};
-
-% Speaker encoder
-\node[frozen, right=0.8cm of enroll] (ecapa) {ECAPA-TDNN\\(frozen)};
-\draw[arr] (enroll) -- (ecapa);
-
-\node[box, right=0.7cm of ecapa] (emb) {$\mathbf{e} \in \mathbb{R}^{192}$};
-\draw[arr] (ecapa) -- (emb);
-
-% CNN
-\node[op, right=0.8cm of mag] (cnn) {8$\times$ Conv2D\\+ bottleneck};
-\draw[arr] (mag) -- (cnn);
-
-% Concat
-\node[op, right=0.8cm of cnn] (concat) {Concat\\per frame};
-\draw[arr] (cnn) -- (concat);
-\draw[arr] (emb) -- (concat);
-
-% BiLSTM
-\node[op, right=0.8cm of concat] (bilstm) {BiLSTM\\$H{=}400$};
-\draw[arr] (concat) -- (bilstm);
-
-% FC + sigmoid
-\node[op, right=0.8cm of bilstm] (fc) {FC + $\sigma$};
-\draw[arr] (bilstm) -- (fc);
-
-% Mask output
-\node[io, right=0.8cm of fc] (mask) {$\mathbf{M} \in [0,1]^{F \times T}$};
-\draw[arr] (fc) -- (mask);
-
-\end{tikzpicture}
-\caption{Extraction network architecture. The magnitude spectrogram is encoded by eight 2D convolutional layers (with a channel bottleneck), conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask. Dashed box denotes a frozen pretrained model.}
-\label{fig:extractor-arch}
-\end{figure}
-
-\bibliographystyle{unsrtnat}
-\bibliography{references}
-
-% Use of AI, Consent, Group Identification — not required for briefing; will be added in final report.
+\begin{itemize}
+	\item Group number:
+	\item Names of group members: 
+	\item Signature of of group members: 
+	\item Date: 
+\end{itemize}
 
 \end{document}

@@ -1,42 +1,49 @@
-# TargetTTS: SNR Branch
+# TargetTTS: Target-Speaker Speech-to-Text in Overlapping Speech
 
-ECE1508 Winter course project on isolating a target speaker's transcript from overlapping speech, benchmarked across a range of Signal-to-Interference Ratios (SIR) and overlap conditions.
+ECE1508 (Applied Deep Learning) course project. Given a multi-speaker audio mixture and a short enrollment clip of the target speaker, transcribe only the target speaker.
 
-This branch adds:
-- WAXAL (Twi) dataset download, preprocessing, and in-memory cache utilities
-- Whisper-small model finetuned for Twi ASR on WAXAL dataset
-- Synthetic mixture generation for both LibriSpeech (English) and WAXAL (Twi)
-- Mixture benchmarking pipeline evaluating Whisper small on both datasets
-- Shared preprocessing and text normalization via `src/preprocess.py`
+**Pipeline:** Enrollment clip → ECAPA-TDNN (frozen) → speaker embedding → Extraction network (trained) → time-frequency mask → masked spectrogram → iSTFT → Whisper (frozen) → transcript.
 
 ---
 
 ## Project Structure
 
-
 ```
 TargetTTS/
-├── data/
-│   ├── download_librispeech.py       # Download LibriSpeech + build JSONL manifests
-│   └── download_waxal.py             # Download WAXAL dataset from HuggingFace Hub
-│   └── mixture_recipes/              # Generated mix recipe CSVs
-│   └── synthetic_mixtures/           # Generated synthetic mixture audios
-│   └── benchmark_results/            # Whisper results on English and Twi mixtures
-│   └── librispeech/                  # Librispeech data
-│   └── waxal/                        # Waxal data
 ├── src/
-│   └── preprocess.py                 # Audio loading, normalization, text normalization, and WAXAL cache builder
-│   └── evaluate_baseline.py
-│                                     
+│   ├── extraction_net.py       # Extraction network architecture, STFT/iSTFT utilities
+│   ├── speaker_encoder.py      # ECAPA-TDNN speaker embedding wrapper
+│   ├── preprocess.py           # Audio loading (16kHz, peak-normalized), text normalization, WAXAL cache
+│   └── dataset.py              # MixtureDataset and pad_collate for DataLoader
+├── scripts/
+│   ├── generate_recipes.py     # Generate mixture recipe CSVs
+│   ├── generate_mixtures.py    # Generate synthetic 2-speaker WAV mixtures
+│   ├── prepare_training.py     # Train/val/test splits + precompute speaker embeddings
+│   ├── train_extraction.py     # Train the extraction network
+│   ├── evaluate_wer.py         # Evaluate WER with and without extraction
+│   └── plot_wer.py             # Plot WER vs overlap ratio from benchmark results
+├── data/
+│   ├── download_librispeech.py # Download LibriSpeech + build JSONL manifests
+│   ├── download_waxal.py       # Download WAXAL (Twi) dataset from HuggingFace Hub
+│   ├── mixture_recipes/        # Generated mix recipe CSVs (gitignored)
+│   ├── synthetic_mixtures/     # Generated synthetic mixture WAVs (gitignored)
+│   ├── benchmark_results/      # Whisper benchmark results for English and Twi
+│   ├── librispeech/            # LibriSpeech data (gitignored)
+│   └── waxal/                  # WAXAL data (gitignored)
 ├── notebooks/
-│   └── test_preprocess.ipynb         # Verify preprocessing on LibriSpeech + WAXAL samples
-│   ├── ADL_Generate_Metadata.ipynb   # Generate mix recipe CSVs (Colab)
-│   ├── ADL_Generate_Mixtures.ipynb   # Generate synthetic mixed audio files (Colab)
-│   └── ADL_Benchmark_Mixtures.ipynb  # Run benchmarking and plot results (Colab)
-└── models/
-│   └── whisper-small-twi/            # Fine-tuned Twi Whisper model
-├── proposal/
+│   ├── demo_extraction.ipynb         # Demo: full pipeline on a single example
+│   ├── ADL_Generate_Metadata.ipynb   # Generate mix recipes (Colab)
+│   ├── ADL_Generate_Mixtures.ipynb   # Generate synthetic mixtures (Colab)
+│   ├── ADL_Benchmark_Mixtures.ipynb  # Benchmark Whisper on mixtures (Colab)
+│   ├── preview_mixtures.ipynb        # Listen to mixtures and view spectrograms
+│   └── test_preprocess.ipynb         # Verify audio and text preprocessing
 ├── report/
+│   ├── final_report.tex        # Final report (NeurIPS format)
+│   └── references.bib          # Bibliography
+├── results/                    # Evaluation results
+├── checkpoints/                # Trained model checkpoints (gitignored)
+├── pyproject.toml              # Python dependencies
+├── uv.lock                     # Locked dependency versions
 └── README.md
 ```
 
@@ -44,7 +51,7 @@ TargetTTS/
 
 ## Setup
 
-This project uses [uv](https://docs.astral.sh/uv/) for Python package management.
+This project uses [`uv`](https://docs.astral.sh/uv/) for Python package management instead of `requirements.txt` or `environment.yaml`. All dependencies are declared in `pyproject.toml` and pinned in `uv.lock`, which together provide a fully reproducible environment. `uv` resolves, installs, and locks dependencies in a single command and is significantly faster than pip. See the [uv documentation](https://docs.astral.sh/uv/) for more details.
 
 ```bash
 # Install uv (if not already installed)
@@ -130,104 +137,119 @@ Files are saved to `data/waxal/`.
 
 ---
 
-## Preprocessing (`src/preprocess.py`)
+## Data Pipeline
 
-All audio and text preprocessing is centralized here so both local scripts and Colab notebooks use the same logic.
+All data directories are gitignored. Run these steps in order on a new machine:
 
-### WAXAL Cache
-Added for preprocessing WAXAL data.
-```python
-from src.preprocess import build_waxal_cache
-
-cache = build_waxal_cache("data/waxal")
-# cache: dict mapping filename (e.g. "ak_gh_image_0013_....mp3") -> float32 numpy array
-```
-
----
-
-## Notebooks
-
-### Local (`test_preprocess.ipynb`)
-
-Verifies preprocessing on both LibriSpeech and WAXAL samples. It plays audio inline, prints raw vs normalized transcripts, and verifies the normalizer does not mangle Twi charaters
-
-### Colab (`ADL_*.ipynb`)
-
-The three Colab notebooks are in `notebooks/`. Each notebook imports shared utilities from `src/preprocess.py`.
-
-| Notebook | Purpose |
-|---|---|
-| `ADL_Generate_Metadata` | Generates mix recipe CSVs for LibriSpeech and WAXAL, pairing target and interferer utterances with random SIR levels and overlap ratios |
-| `ADL_Generate_Mixtures` | Reads mix recipe CSVs and generates synthetic mixed `.wav` files for both datasets |
-| `ADL_Benchmark_Mixtures` | Runs Whisper small inference on all mixed audio files and computes WER, CER, and noise leakage rate across SIR/overlap buckets |
-
----
-
-## Experiment Configuration
-
-Mixture recipes are generated with the following parameters:
-
-| Parameter | Values |
-|---|---|
-| SIR levels (dB) | -5, 0, 5 |
-| Overlap ratios | 0.1, 0.2, 0.3, 0.4, 0.5, 1.0 |
-| Mixes per dataset | 12,500 |
-| Baseline rows (clean) | 500 per dataset (overlap = 0.0) |
-
-Baseline rows use the original clean audio with no mixing, providing a reference WER at 0% interference.
-
----
-
-## Speaker-Conditioned Extraction
-
-The extraction pipeline isolates a target speaker's audio from a mixture, given a short enrollment clip of that speaker. The extracted audio is then passed to Whisper for transcription.
-
-### 1. Generate extraction dataset
-
-This creates mixtures with aligned clean sources (target + interferer wavs) and enrollment clips, which are needed to train the extraction network.
+### 1. Generate mixture recipes and audio
 
 ```bash
-# Generate recipe CSV with enrollment utterances
+# Generate recipe CSVs describing which utterances to mix
 uv run python -m scripts.generate_recipes --num-mixes 12500 --sir-levels 0 5
 
-# Generate mixture + aligned target + aligned interferer wav files
+# Generate synthetic 2-speaker WAV mixtures (~8.5 GB)
 uv run python -m scripts.generate_mixtures
 ```
 
-Output: `data/synthetic_mixtures/librispeech_extraction/` with three files per mix (`{mix_id}.wav`, `{mix_id}_target.wav`, `{mix_id}_interf.wav`).
+Mixtures are generated at SIR levels of 0, 5, and 10 dB with overlap ratios of 0.1, 0.2, 0.3, 0.4, 0.5, and 1.0. Each mixture produces three files: `{mix_id}.wav` (mixture), `{mix_id}_target.wav` (aligned clean target), `{mix_id}_interf.wav` (aligned clean interferer).
 
 ### 2. Prepare training data
-
-Splits recipes into train/val/test (10000/1250/1250) and pre-computes ECAPA-TDNN speaker embeddings for all enrollment clips.
 
 ```bash
 uv run python -m scripts.prepare_training
 ```
 
-Output: `data/prepared_training/` with `train.csv`, `val.csv`, `test.csv`, and `embeddings.pt`.
-
-### 3. Train the extraction network
-
-```bash
-uv run python -m scripts.train_extraction --batch-size 16 --num-workers 4 --epochs 30
-```
-
-Best checkpoint is saved to `checkpoints/best_model.pt`. The training prints train loss, val loss, and learning rate each epoch. Early stopping triggers if val loss doesn't improve for 7 epochs.
-
-### 4. Preview mixtures
-
-Open `notebooks/preview_mixtures.ipynb` to listen to enrollment clips, clean targets, interferers, mixtures, and see what Whisper transcribes on the mixed audio.
+Creates `data/prepared_training/` with train/val/test splits (10,000/1,250/1,250) and 2,588 precomputed ECAPA-TDNN speaker embeddings.
 
 ---
 
-## Models
+## Demo
 
-| Dataset | Model | Location |
+Open `notebooks/demo_extraction.ipynb` to see the full extraction pipeline in action. It runs on a single hard example (2 speakers, 0 dB SIR, 50% overlap) and walks through each step:
+
+1. Listen to the mixture (two speakers talking over each other)
+2. Listen to the clean target (what the target speaker sounds like alone)
+3. Whisper on the raw mixture (baseline) -- 91% WER
+4. Listen to the enrollment clip (different utterance, same speaker)
+5. Run extraction: ECAPA-TDNN embedding -> mask prediction -> iSTFT reconstruction
+6. Whisper on the extracted audio -- 9% WER
+
+Requires the trained checkpoint at `checkpoints/hybrid_alpha_0.1/best_model.pt` and the synthetic mixtures in `data/synthetic_mixtures/`.
+
+---
+
+## Training
+
+```bash
+uv run python -m scripts.train_extraction \
+    --batch-size 32 --num-workers 4 --epochs 30 --lr 1e-3 \
+    --hybrid-alpha 0.1 --power 0.3
+```
+
+**Key flags:**
+- `--hybrid-alpha 0.1` — Hybrid loss: 10% oracle mask MSE + 90% power-law reconstruction loss
+- `--power 0.3` — Power-law compression exponent (compresses dynamic range in both loss and CNN input)
+- `--patience 7` — Early stopping if validation loss doesn't improve for 7 epochs
+
+Best checkpoint is saved to `checkpoints/best_model.pt`. Training prints train loss, val loss, val reconstruction loss, val mask MSE, and learning rate each epoch.
+
+---
+
+## Evaluation
+
+```bash
+# Evaluate with extraction vs baseline
+uv run python -m scripts.evaluate_wer \
+    --checkpoint checkpoints/best_model.pt
+
+# Evaluate on specific conditions
+uv run python -m scripts.evaluate_wer \
+    --checkpoint checkpoints/best_model.pt \
+    --overlap-ratios 0.5 1.0 --sir-levels 0
+
+# Baseline only (no extraction)
+uv run python -m scripts.evaluate_wer
+```
+
+The evaluation script runs both baseline (raw mixture → Whisper) and extraction (mixture → extraction network → Whisper) on the test split and outputs:
+- Per-sample CSVs with WER, CER, and leakage rate
+- Aggregated CSVs grouped by SIR level and overlap ratio
+- Comparison plot (extraction vs baseline)
+
+---
+
+## Architecture
+
+### Extraction Network (`src/extraction_net.py`)
+
+The only trained component. 9.3M parameters.
+
+- **Input:** Magnitude spectrogram (B, 257, T) + speaker embedding (B, 192)
+- **CNN encoder:** 8 Conv2D layers (VoiceFilter architecture). Layers 1-2 are separable (frequency-only, time-only). Layers 3-7 use (5,5) kernels with time-only dilation (1, 2, 4, 8, 16). Layer 8 is a 1x1 bottleneck (64 → 8 channels).
+- **Speaker conditioning:** CNN output flattened per frame, speaker embedding concatenated
+- **BiLSTM:** 1 layer, 400 hidden per direction
+- **Mask predictor:** FC(800→600) + ReLU → FC(600→257) + sigmoid → mask in [0,1]
+
+### Frozen Components
+
+| Component | Model | Purpose |
 |---|---|---|
-| English (LibriSpeech) | `whisper-tiny` | `openai/whisper-tiny` via HuggingFace Hub |
-| Twi (WAXAL) | `whisper-small-twi` | `TargetTTS/models/whisper-small-twi/final/` on Drive |
+| Speaker encoder | ECAPA-TDNN (SpeechBrain) | 192-dim speaker embedding from enrollment clip |
+| ASR (English) | Whisper-tiny (39M params) | Transcription of extracted audio |
+| ASR (Twi) | Whisper-small fine-tuned on WAXAL | Transcription for Twi experiments |
 
-Both models use `language="english"` since Twi fine-tuned model was trained with this setting since Whisper does not natively support Twi.
+---
+
+## Notebooks
+
+| Notebook | Purpose |
+|---|---|
+| `demo_extraction.ipynb` | **Demo:** full extraction pipeline on a single example with audio playback and WER comparison |
+| `preview_mixtures.ipynb` | Listen to enrollment clips, clean targets, interferers, and mixtures; view spectrograms |
+| `test_preprocess.ipynb` | Verify audio and text preprocessing on LibriSpeech and WAXAL samples |
+| `ADL_Generate_Metadata.ipynb` | Generate mix recipe CSVs for LibriSpeech and WAXAL (Colab) |
+| `ADL_Generate_Mixtures.ipynb` | Generate synthetic mixed audio files (Colab) |
+| `ADL_Benchmark_Mixtures.ipynb` | Benchmark Whisper on mixtures, compute WER/CER/leakage (Colab) |
 
 ---
 
@@ -235,8 +257,8 @@ Both models use `language="english"` since Twi fine-tuned model was trained with
 
 | Metric | Description |
 |---|---|
-| WER | Word Error Rate: Rratio of word-level edits to reference length |
-| CER | Character Error Rate: Same at character level |
-| Leakage Rate | Fraction of noise transcript words that appear in the prediction but not the target transcript |
+| WER | Word Error Rate: ratio of word-level edits (substitutions + deletions + insertions) to reference length |
+| CER | Character Error Rate: same at character level |
+| Leakage Rate | Fraction of interferer-only words that appear in the prediction |
 
-All metrics are computed on normalized text. WER > 1.0 is possible when the model produces more words than the reference (insertions).
+All metrics are computed on normalized text (lowercased, punctuation removed, contractions expanded). WER > 1.0 is possible when the model produces more words than the reference.

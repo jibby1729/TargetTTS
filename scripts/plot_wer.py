@@ -34,7 +34,7 @@ def plot_wer_vs_overlap(csv_path, title, output_filename, sir_levels=SIR_LEVELS)
 
     # Filter to desired SIR levels and overlap ratio <= 0.5
     df = df[df["sir_level_db"].isin(sir_levels)]
-    df = df[df["overlap_ratio"] <= 0.5]
+    df = df[df["overlap_ratio"] <= 1.0]
 
     plt.figure(figsize=(7, 4.5))
 
