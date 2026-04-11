@@ -185,12 +185,17 @@ def run_evaluation(test_df, mix_dir, extraction_model, embeddings,
 
 
 def aggregate_results(df):
-    """Group by (sir_level_db, overlap_ratio) and compute mean metrics."""
-    return (
-        df.groupby(["sir_level_db", "overlap_ratio"])[["wer", "cer", "leakage_rate"]]
-        .mean()
-        .reset_index()
-    )
+    """Group by (sir_level_db, overlap_ratio) and compute mean/median/std metrics."""
+    grouped = df.groupby(["sir_level_db", "overlap_ratio"])
+    agg = grouped[["wer", "cer", "leakage_rate"]].mean().reset_index()
+    medians = grouped[["wer", "cer"]].median().reset_index()
+    stds = grouped[["wer", "cer"]].std().reset_index()
+    agg["wer_median"] = medians["wer"]
+    agg["cer_median"] = medians["cer"]
+    agg["wer_std"] = stds["wer"]
+    agg["cer_std"] = stds["cer"]
+    agg["n_samples"] = grouped.size().values
+    return agg
 
 
 def plot_comparison(extraction_agg, baseline_agg, output_dir):
@@ -235,21 +240,28 @@ def plot_comparison(extraction_agg, baseline_agg, output_dir):
 
 
 def print_summary(extraction_agg, baseline_agg):
-    """Print a side-by-side comparison table."""
+    """Print a side-by-side comparison table with mean, median, and std."""
     merged = extraction_agg.merge(
         baseline_agg, on=["sir_level_db", "overlap_ratio"],
         suffixes=("_ext", "_base"), how="outer"
     ).sort_values(["sir_level_db", "overlap_ratio"])
 
-    print(f"\n{'SIR':>5}  {'Overlap':>8}  {'Base WER':>10}  {'Ext WER':>10}  {'Delta':>8}")
-    print("-" * 48)
+    print(f"\n{'SIR':>5}  {'Overlap':>8}  {'n':>5}  {'Base Mean':>18}  {'Base Median':>13}  {'Ext Mean':>18}  {'Ext Median':>13}  {'Delta(Med)':>11}")
+    print("-" * 105)
     for _, r in merged.iterrows():
-        base = r.get("wer_base", float("nan")) * 100
-        ext = r.get("wer_ext", float("nan")) * 100
-        delta = ext - base
+        n = int(r.get("n_samples_ext", r.get("n_samples_base", 0)))
+        base_mean = r.get("wer_base", float("nan")) * 100
+        base_med = r.get("wer_median_base", float("nan")) * 100
+        base_std = r.get("wer_std_base", float("nan")) * 100
+        ext_mean = r.get("wer_ext", float("nan")) * 100
+        ext_med = r.get("wer_median_ext", float("nan")) * 100
+        ext_std = r.get("wer_std_ext", float("nan")) * 100
+        delta = ext_med - base_med
         sign = "+" if delta >= 0 else ""
-        print(f"{int(r['sir_level_db']):>5}  {r['overlap_ratio']:>8.1f}  "
-              f"{base:>9.1f}%  {ext:>9.1f}%  {sign}{delta:>6.1f}%")
+        print(f"{int(r['sir_level_db']):>5}  {r['overlap_ratio']:>8.1f}  {n:>5}  "
+              f"{base_mean:>6.1f}% ±{base_std:>5.1f}%  {base_med:>11.1f}%  "
+              f"{ext_mean:>6.1f}% ±{ext_std:>5.1f}%  {ext_med:>11.1f}%  "
+              f"{sign}{delta:>9.1f}%")
 
 
 def main():
