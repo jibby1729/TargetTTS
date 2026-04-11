@@ -215,6 +215,7 @@ results/
 
 # Training checkpoints and prepared data (large, regenerated)
 checkpoints/
+!checkpoints/hybrid_alpha_0.1/
 data/prepared_training/
 
 # Claude Code
