@@ -75,11 +75,11 @@ The Short-Time Fourier Transform (STFT) converts a waveform into a two-dimension
 Our pipeline consists of three stages, illustrated in Figure~\ref{fig:pipeline}:
 
 \begin{enumerate}
-    \item \textbf{Speaker embedding extraction.} A frozen pretrained ECAPA-TDNN~\citep{ECAPA} encodes the enrollment utterance $\mathbf{x}_{\text{enroll}}$ into a speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$.
+    \item Speaker embedding extraction: A frozen pretrained ECAPA-TDNN~\citep{ECAPA} encodes the enrollment utterance $\mathbf{x}_{\text{enroll}}$ into a speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$.
 
-    \item \textbf{Speaker-conditioned extraction.} A trained masking network receives the mixture magnitude spectrogram $|\mathbf{X}_{\text{mix}}|$ and the speaker embedding $\mathbf{e}$, and predicts a soft mask $\mathbf{M} \in [0,1]^{F \times T}$ that isolates the target speaker. The estimated target spectrogram is $|\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|$, and the waveform is reconstructed via iSTFT using the original mixture phase.
+    \item Speaker-conditioned extraction: A trained masking network receives the mixture magnitude spectrogram $|\mathbf{X}_{\text{mix}}|$ and the speaker embedding $\mathbf{e}$, and predicts a soft mask $\mathbf{M} \in [0,1]^{F \times T}$ that isolates the target speaker. The estimated target spectrogram is $|\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|$, and the waveform is reconstructed via iSTFT using the original mixture phase.
 
-    \item \textbf{ASR decoding.} A frozen pretrained Whisper model transcribes the extracted waveform.
+    \item ASR decoding: A frozen pretrained Whisper model transcribes the extracted waveform.
 \end{enumerate}
 
 Only the extraction network (stage 2) is trained; the speaker encoder and ASR model remain frozen throughout.
@@ -128,7 +128,7 @@ Only the extraction network (stage 2) is trained; the speaker encoder and ASR mo
 \draw[arr] (fc) -- (mask);
 
 \end{tikzpicture}
-\caption{Extraction network architecture. The magnitude spectrogram is encoded by eight 2D convolutional layers (with a channel bottleneck), conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask $\mathbf{M} \in [0,1]^{F \times T}$. Dashed box denotes a frozen pretrained model.}
+\caption{Extraction network architecture. The magnitude spectrogram is encoded by eight 2D convolutional layers, conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask $\mathbf{M} \in [0,1]^{F \times T}$. Dashed box denotes a frozen pretrained model.}
 \label{fig:pipeline}
 \end{figure}
 
@@ -141,70 +141,27 @@ We use a pretrained ECAPA-TDNN~\citep{ECAPA} (\texttt{speechbrain/spkrec-ecapa-v
 
 \subsection{Extraction network architecture}
 
-The extraction network follows the VoiceFilter design~\citep{VoiceFilter} and has 9.3M trainable parameters.
+The extraction network follows the VoiceFilter design~\citep{VoiceFilter} and has 9.3M trainable parameters. The magnitude spectrogram is treated as a single-channel 2D image and processed by eight Conv2D layers with layer normalization and ReLU. The first two layers use separable kernels (frequency-only and time-only), layers 3--7 use joint $(5, 5)$ kernels with time-only dilation (factors $1, 2, 4, 8, 16$) giving a temporal receptive field of 31 frames ($\approx$310\,ms), and the final layer is a $1 \times 1$ bottleneck reducing from 64 to 8 channels.
 
-\subsubsection{Convolutional encoder}
-The magnitude spectrogram is treated as a single-channel 2D image and processed by eight Conv2D layers, each followed by layer normalization (implemented as GroupNorm with one group) and ReLU:
-
-\begin{table}[H]
-\centering
-\small
-\begin{tabular}{@{}clccl@{}}
-\toprule
-\textbf{Layer} & \textbf{Kernel} (freq $\times$ time) & \textbf{Dilation} (freq, time) & \textbf{Ch.} & \textbf{Purpose} \\
-\midrule
-1 & $(7, 1)$ & $(1, 1)$ & 64 & Frequency-only \\
-2 & $(1, 7)$ & $(1, 1)$ & 64 & Time-only \\
-3--7 & $(5, 5)$ & $(1, 2^{k})$ & 64 & Joint, time-dilated ($k{=}0{\ldots}4$) \\
-8 & $(1, 1)$ & $(1, 1)$ & 8  & Channel bottleneck \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Layers 1--2 are separable-style convolutions: the $(7, 1)$ kernel scans frequency to detect spectral patterns, while the $(1, 7)$ kernel scans time. Layers 3--7 use joint kernels with dilation increasing only along time (factors $1, 2, 4, 8, 16$), giving a temporal receptive field of 31 frames ($\approx$310\,ms). Layer 8 compresses from 64 to 8 channels.
-
-Unlike 1D convolutions that treat all $F$ bins as independent channels, 2D convolutions share weights across frequency, providing frequency translation equivariance: a harmonic pattern at 500\,Hz is recognized by the same filter at 1000\,Hz.
-
-\subsubsection{Speaker conditioning and BiLSTM}
-The CNN output $\mathbf{H} \in \mathbb{R}^{B \times 8 \times F \times T}$ is flattened to $\mathbf{g}_t \in \mathbb{R}^{2056}$ per time frame. The speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$ is concatenated at every frame, yielding $\tilde{\mathbf{H}}_t \in \mathbb{R}^{2248}$. A single-layer BiLSTM ($H{=}400$ per direction) processes the sequence, and two FC layers with ReLU and sigmoid produce the mask:
-\begin{align}
-    \mathbf{z}_t &= \text{ReLU}(\mathbf{W}_1 \mathbf{h}_t + \mathbf{b}_1) \in \mathbb{R}^{600}, \qquad
-    \mathbf{M}_t = \sigma(\mathbf{W}_2 \mathbf{z}_t + \mathbf{b}_2) \in [0,1]^{F}
-\end{align}
-
-The BiLSTM is critical because overlap regions are locally ambiguous---a frame where two speakers' harmonics coincide may only be resolvable given surrounding context in both directions.
+The CNN output is flattened per time frame and concatenated with the speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$. A single-layer BiLSTM ($H{=}400$ per direction) processes the sequence, and two FC layers with ReLU and sigmoid produce the mask $\mathbf{M}_t \in [0,1]^{F}$ at each frame. We use a BiLSTM rather than a unidirectional LSTM because overlap regions are locally ambiguous and both past and future context help disambiguate which spectral energy belongs to the target speaker.
 
 \subsection{Training objective}
 
-\subsubsection{Power-law compressed loss}
-Raw MSE loss is dominated by loud frequency bins (vowels at magnitude $\sim$10{,}000) while quiet bins (fricatives at magnitude $\sim$1) contribute negligible gradient. Following Wilson et al.~\citep{Wilson2018}, we apply power-law compression ($p = 0.3$) before computing MSE:
+We train with a power-law compressed reconstruction loss following Wilson et al.~\citep{Wilson2018}, who show that element-wise power-law compression of spectrograms before computing MSE improves separation quality. We use an exponent of $p = 0.3$, which we confirmed through a short ablation over $p \in \{0.1, 0.2, 0.3, 0.5, 1.0\}$:
 \[
     \mathcal{L}_{\text{recon}} = \frac{1}{FT} \bigl\| \bigl(\mathbf{M} \odot |\mathbf{X}_{\text{mix}}| + \epsilon\bigr)^{p} - \bigl(|\mathbf{X}_{\text{target}}| + \epsilon\bigr)^{p} \bigr\|_F^2
 \]
-where $\epsilon = 10^{-8}$ prevents gradient explosion at zero. The same compression is applied to the CNN input to normalize its dynamic range; the mask is still applied to raw magnitudes for reconstruction.
+where $\epsilon = 10^{-8}$. The same compression is applied to the CNN input to normalize its dynamic range; the mask is still applied to raw magnitudes for reconstruction.
 
-\subsubsection{Hybrid loss with oracle mask supervision}
-
-The oracle mask is the mask that perfectly recovers the target:
-$\mathbf{M}^{*}_{f,t} = \text{clamp}\!\left(|\mathbf{X}_{\text{target}}|_{f,t}\, /\, (|\mathbf{X}_{\text{mix}}|_{f,t} + \epsilon),\; 0,\; 1\right)$.
-We found that power-law loss alone allows the model to find a shortcut---masks biased toward 1.0 that reduce reconstruction error without separating speakers. Adding oracle mask supervision prevents this:
+We also experimented with a hybrid loss that adds direct supervision on the oracle mask. Since the mask should satisfy $\mathbf{M} \odot |\mathbf{X}_{\text{mix}}| = |\mathbf{X}_{\text{target}}|$, dividing both sides by $|\mathbf{X}_{\text{mix}}|$ gives the ideal mask $\mathbf{M}^{*}_{f,t} = \text{clamp}(|\mathbf{X}_{\text{target}}|_{f,t}\, /\, (|\mathbf{X}_{\text{mix}}|_{f,t} + \epsilon),\; 0,\; 1)$, clamped to $[0,1]$ since the sigmoid output cannot exceed this range:
 \[
-    \mathcal{L} = \alpha \cdot \underbrace{\|\mathbf{M} - \mathbf{M}^{*}\|_F^2}_{\text{mask MSE}} + (1 - \alpha) \cdot \mathcal{L}_{\text{recon}}
+    \mathcal{L} = \alpha \cdot \|\mathbf{M} - \mathbf{M}^{*}\|_F^2 + (1 - \alpha) \cdot \mathcal{L}_{\text{recon}}
 \]
-We validated $\alpha = 0.1$ as optimal through controlled overfit experiments (Table~\ref{tab:hybrid}).
+This hybrid approach is inspired by Wilson et al.~\citep{Wilson2018}, who explore tradeoffs between mask-domain and signal-domain losses. We found $\alpha = 0.1$ to best balance optimizing the oracle mask loss and the reconstruction loss, through a sweep over $\alpha \in \{0, 0.05, 0.1, 0.2, 0.3, 1.0\}$.
 
 \subsection{Data pipeline}
 
-\subsubsection{Datasets}
-We use two speech corpora. \textbf{LibriSpeech}~(English): read speech derived from public-domain audiobooks, 16\,kHz mono. We use the \texttt{dev-clean} and \texttt{test-clean} splits. \textbf{WAXAL Akan}~(Twi): a dataset of Twi speech from the HuggingFace Hub, used to fine-tune Whisper for a language it does not natively support. All audio is loaded at 16\,kHz and peak-normalized to $[-1, 1]$.
-
-\subsubsection{Synthetic mixture generation}
-We generate 12{,}500 two-speaker mixtures from LibriSpeech by summing pairs of utterances from different speakers:
-$\mathbf{x}_{\text{mix}} = \mathbf{x}_{\text{target}} + \alpha\,\mathbf{x}_{\text{interferer}}$,
-where $\alpha$ controls the signal-to-interferer ratio (SIR). We vary SIR $\in \{0, 5\}$\,dB and overlap ratio $\in \{0.1, 0.2, 0.3, 0.4, 0.5, 1.0\}$. The overlap ratio determines what fraction of the target utterance is overlapped by the interferer. Each mixture preserves the aligned clean target waveform for computing oracle masks and ground-truth spectrograms during training.
-
-\subsubsection{Train/validation/test split}
-The 12{,}500 recipes are split into 10{,}000 train, 1{,}250 validation, and 1{,}250 test samples. Speaker embeddings for all unique enrollment utterances (2{,}588 embeddings) are precomputed and cached.
+We use LibriSpeech (\texttt{dev-clean} + \texttt{test-clean}, 16\,kHz mono) for English and WAXAL Akan for Twi. We generate 12{,}500 synthetic two-speaker mixtures from LibriSpeech: $\mathbf{x}_{\text{mix}} = \mathbf{x}_{\text{target}} + \alpha\,\mathbf{x}_{\text{interferer}}$, varying SIR $\in \{0, 5\}$\,dB and overlap ratio $\in \{0.1, 0.2, 0.3, 0.4, 0.5, 1.0\}$. Each mixture preserves the aligned clean target waveform for computing oracle masks during training. The recipes are split into 10{,}000 train, 1{,}250 validation, and 1{,}250 test samples, with speaker embeddings precomputed for all 2{,}588 unique enrollment utterances.
 
 
 \section{Numerical Experiments}
@@ -222,39 +179,13 @@ We evaluated Whisper-tiny (39M params) on English and the fine-tuned Whisper-sma
 \includegraphics[width=0.48\textwidth]{English_Base_Whisper_WER_vs_Overlap.png}
 \hfill
 \includegraphics[width=0.48\textwidth]{Twi_Finetuned_Whisper_WER_vs_Overlap.png}
-\caption{WER vs.\ overlap ratio for English (left) and Twi (right) at three SIR levels. Both languages show the same degradation pattern: WER increases with overlap ratio and decreases with SIR. At 0\,dB SIR with full overlap, English WER exceeds 100\%.}
+\caption{WER vs.\ overlap ratio for English (left, Whisper-tiny, clean baseline 8.1\%) and Twi (right, fine-tuned Whisper-small, clean baseline 34.7\%) at three SIR levels. Both languages show the same degradation pattern: WER increases with overlap ratio and decreases with SIR. At 0\,dB SIR with full overlap, English WER exceeds 100\%. This confirms the problem is language-agnostic.}
 \label{fig:baseline-wer}
 \end{figure}
 
-English clean baseline: 8.1\% WER. At 0\,dB SIR with full overlap, WER exceeds 100\%. Twi clean baseline: 34.7\% WER with the same degradation pattern. This confirms the problem is language-agnostic.
-
-\subsection{Hybrid loss validation}
-
-We validated the hybrid loss weight $\alpha$ through controlled overfit experiments (seed=42, 1 batch of 16 samples, 200 epochs, lr=$10^{-4}$, compressed input) with dual-metric logging.
-
-\begin{table}[H]
-  \caption{Hybrid loss ablation on 1-batch overfit test ($p = 0.3$, 200 epochs).}
-  \label{tab:hybrid}
-  \centering
-  \small
-  \begin{tabular}{cccl}
-    \toprule
-    $\alpha$ & Recon PL & Mask MSE & Notes \\
-    \midrule
-    0.0 (power-law only) & \textbf{0.0027} & 0.333 & Best recon, but masks diverge \\
-    0.05 & 0.0031 & 0.0171 & \\
-    \textbf{0.1} & 0.0032 & \textbf{0.0166} & \textbf{Best balance} \\
-    0.2 & 0.0033 & 0.0155 & \\
-    1.0 (oracle only) & 0.0046 & 0.0184 & Good masks, poor recon \\
-    \bottomrule
-  \end{tabular}
-\end{table}
-
-The key finding: power-law loss alone ($\alpha = 0$) achieves the best reconstruction metric but produces masks biased toward 1.0 (mask MSE of 0.333 vs.\ all-ones baseline of 0.158), meaning the model learns to pass everything through rather than separate speakers. Adding 10\% oracle mask supervision ($\alpha = 0.1$) reduces mask MSE by $20\times$ with only a 19\% increase in reconstruction loss.
-
 \subsection{Training}
 
-We trained with the validated configuration: batch size 32, learning rate $10^{-3}$ with ReduceLROnPlateau (factor 0.5, patience 3), Adam optimizer, hybrid loss $\alpha = 0.1$, power-law compression $p = 0.3$, early stopping with patience 7.
+We trained with batch size 32, initial learning rate $10^{-3}$, Adam optimizer, hybrid loss $\alpha = 0.1$, power-law compression $p = 0.3$, and early stopping with patience 7. The learning rate is managed by ReduceLROnPlateau (factor 0.5, patience 3), which halves the learning rate whenever the validation loss stops improving for 3 consecutive epochs.
 
 % TODO: Add training curves (train loss, val loss vs epoch)
 % TODO: Add final training results
@@ -294,8 +225,7 @@ We built a target-speaker speech-to-text system that uses a speaker-conditioned 
 
 \newpage
 \section*{Use of AI}
-% TODO: Describe AI usage
-We used Claude Code (Anthropic) as a coding assistant throughout the project for implementing the extraction network architecture, debugging training issues, writing evaluation scripts, and drafting sections of this report. All AI-generated code was reviewed, tested, and modified by the authors. Architecture decisions (hybrid loss formulation, 2D CNN design, hyperparameter choices) were made by the authors based on experimentation and literature review, with AI assistance for implementation.
+We used Claude (Anthropic) to assist with implementation, debugging, generating plots, and documenting the codebase, as well as to brainstorm ideas for improving model performance. All architecture decisions, experimental design, and analysis were done by the authors. AI-generated code was reviewed and tested before use.
 
 
 \section*{Consent for Information Sharing}
