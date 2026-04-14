@@ -16,6 +16,7 @@ import time
 import pandas as pd
 import torch
 import torch.nn as nn
+from torch.amp import autocast
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -29,9 +30,9 @@ def power_loss(estimated, target, power):
 
 
 def compute_loss(mask, mix_mag, target_mag, power, hybrid_alpha=None):
-    oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
     recon_loss = power_loss(mask * mix_mag, target_mag, power)
     if hybrid_alpha is not None:
+        oracle_mask = torch.clamp(target_mag / (mix_mag + 1e-8), min=0.0, max=1.0)
         mask_loss = nn.functional.mse_loss(mask, oracle_mask)
         return hybrid_alpha * mask_loss + (1 - hybrid_alpha) * recon_loss
     return recon_loss
@@ -47,10 +48,11 @@ def train_one_epoch(model, loader, optimizer, device, power, hybrid_alpha=None):
         target_mag = target_mag.to(device)
         speaker_emb = speaker_emb.to(device)
 
-        mask = model(mix_mag, speaker_emb)
-        loss = compute_loss(mask, mix_mag, target_mag, power, hybrid_alpha)
+        optimizer.zero_grad(set_to_none=True)
+        with autocast(device_type=device, dtype=torch.bfloat16):
+            mask = model(mix_mag, speaker_emb)
+            loss = compute_loss(mask, mix_mag, target_mag, power, hybrid_alpha)
 
-        optimizer.zero_grad()
         loss.backward()
         optimizer.step()
 
@@ -74,8 +76,10 @@ def validate(model, loader, device, power, hybrid_alpha=None):
         target_mag = target_mag.to(device)
         speaker_emb = speaker_emb.to(device)
 
-        mask = model(mix_mag, speaker_emb)
-        loss = compute_loss(mask, mix_mag, target_mag, power, hybrid_alpha)
+        with autocast(device_type=device, dtype=torch.bfloat16):
+            mask = model(mix_mag, speaker_emb)
+            loss = compute_loss(mask, mix_mag, target_mag, power, hybrid_alpha)
+
         total_loss += loss.item()
 
         # Dual metrics: always compute both
@@ -95,10 +99,12 @@ def main():
                         default="data/synthetic_mixtures/librispeech_extraction")
     parser.add_argument("--checkpoint-dir", type=str, default="checkpoints")
     parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--batch-size", type=int, default=8)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--patience", type=int, default=7)
-    parser.add_argument("--num-workers", type=int, default=0)
+    parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument("--max-frames", type=int, default=1400,
+                        help="Random crop spectrograms to this many frames (default: 500 = 5s). Set 0 to disable.")
     parser.add_argument("--power", type=float, default=0.3,
                         help="Power-law compression exponent for the loss (default: 0.3)")
     parser.add_argument("--hybrid-alpha", type=float, default=0.1,
@@ -122,15 +128,21 @@ def main():
     print()
 
     # Dataloaders
+    max_frames = args.max_frames if args.max_frames > 0 else None
+    mp_context = "spawn" if args.num_workers > 0 else None
     train_loader = DataLoader(
-        MixtureDataset(df_train, args.mix_dir, embeddings),
+        MixtureDataset(df_train, args.mix_dir, embeddings, max_frames=max_frames),
         batch_size=args.batch_size, shuffle=True,
         collate_fn=pad_collate, num_workers=args.num_workers, pin_memory=True,
+        multiprocessing_context=mp_context,
+        persistent_workers=args.num_workers > 0,
     )
     val_loader = DataLoader(
-        MixtureDataset(df_val, args.mix_dir, embeddings),
+        MixtureDataset(df_val, args.mix_dir, embeddings, max_frames=max_frames),
         batch_size=args.batch_size, shuffle=False,
         collate_fn=pad_collate, num_workers=args.num_workers, pin_memory=True,
+        multiprocessing_context=mp_context,
+        persistent_workers=args.num_workers > 0,
     )
 
     # Model, optimizer, scheduler
