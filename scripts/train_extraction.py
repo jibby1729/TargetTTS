@@ -17,7 +17,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from torch.amp import autocast
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, WeightedRandomSampler
 from tqdm import tqdm
 
 from src.extraction_net import ExtractionNet
@@ -109,6 +109,14 @@ def main():
                         help="Power-law compression exponent for the loss (default: 0.3)")
     parser.add_argument("--hybrid-alpha", type=float, default=0.1,
                         help="Hybrid loss weight: alpha * mask_MSE + (1-alpha) * power_loss (default: 0.1)")
+    parser.add_argument("--overlap-ratios", type=float, nargs="+", default=None,
+                        help="Filter train/val to these overlap ratios only (e.g. --overlap-ratios 0.1 0.2 0.3)")
+    parser.add_argument("--overlap-weights", type=float, nargs="+", default=None,
+                        help="Sampling weights per overlap ratio (same order as --overlap-ratios). "
+                             "E.g. --overlap-ratios 0.1 0.2 0.3 0.4 0.5 --overlap-weights 1 1 1 2 2 "
+                             "samples 0.4 and 0.5 twice as often as 0.1-0.3.")
+    parser.add_argument("--resume-from", type=str, default=None,
+                        help="Path to checkpoint to resume from (loads model weights; optimizer resets)")
 
     args = parser.parse_args()
 
@@ -123,6 +131,12 @@ def main():
     embeddings = torch.load(
         os.path.join(args.prepared_dir, "embeddings.pt"), weights_only=False
     )
+
+    if args.overlap_ratios is not None:
+        df_train = df_train[df_train["overlap_ratio"].isin(args.overlap_ratios)].reset_index(drop=True)
+        df_val = df_val[df_val["overlap_ratio"].isin(args.overlap_ratios)].reset_index(drop=True)
+        print(f"Filtered to overlap ratios {args.overlap_ratios}")
+
     print(f"Loaded {len(df_train)} train / {len(df_val)} val recipes")
     print(f"Loaded {len(embeddings)} pre-computed embeddings")
     print()
@@ -130,9 +144,23 @@ def main():
     # Dataloaders
     max_frames = args.max_frames if args.max_frames > 0 else None
     mp_context = "spawn" if args.num_workers > 0 else None
+
+    # Weighted sampler: upsample harder overlap ratios if requested
+    sampler = None
+    if args.overlap_weights is not None:
+        if args.overlap_ratios is None or len(args.overlap_weights) != len(args.overlap_ratios):
+            raise ValueError("--overlap-weights must have the same number of entries as --overlap-ratios")
+        weight_map = dict(zip(args.overlap_ratios, args.overlap_weights))
+        sample_weights = torch.tensor(
+            [weight_map[r] for r in df_train["overlap_ratio"]], dtype=torch.float
+        )
+        sampler = WeightedRandomSampler(sample_weights, num_samples=len(sample_weights), replacement=True)
+        print(f"Weighted sampler: {weight_map}")
+
     train_loader = DataLoader(
         MixtureDataset(df_train, args.mix_dir, embeddings, max_frames=max_frames),
-        batch_size=args.batch_size, shuffle=True,
+        batch_size=args.batch_size, shuffle=(sampler is None),
+        sampler=sampler,
         collate_fn=pad_collate, num_workers=args.num_workers, pin_memory=True,
         multiprocessing_context=mp_context,
         persistent_workers=args.num_workers > 0,
@@ -149,6 +177,12 @@ def main():
     model = ExtractionNet(input_power=args.power).to(device)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model: {n_params:,} trainable parameters")
+
+    if args.resume_from is not None:
+        ckpt = torch.load(args.resume_from, map_location=device, weights_only=False)
+        model.load_state_dict(ckpt["model_state_dict"])
+        print(f"Resumed weights from {args.resume_from} (epoch {ckpt.get('epoch', '?')}, val_loss {ckpt.get('val_loss', '?'):.6f})")
+        print()
 
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(

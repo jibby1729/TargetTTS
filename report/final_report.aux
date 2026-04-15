@@ -27,21 +27,23 @@
 \@writefile{lof}{\contentsline {figure}{\numberline {1}{\ignorespaces Extraction network architecture. The magnitude spectrogram is encoded by eight 2D convolutional layers, conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask $\mathbf  {M} \in [0,1]^{F \times T}$. Dashed box denotes a frozen pretrained model.}}{2}{figure.1}\protected@file@percent }
 \newlabel{fig:pipeline}{{1}{2}{Extraction network architecture. The magnitude spectrogram is encoded by eight 2D convolutional layers, conditioned on the speaker embedding via concatenation, and processed by a BiLSTM to predict a soft mask $\mathbf {M} \in [0,1]^{F \times T}$. Dashed box denotes a frozen pretrained model}{figure.1}{}}
 \@writefile{toc}{\contentsline {section}{\numberline {4}Methodology}{2}{section.4}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Speaker embedding}{2}{subsection.4.1}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.1}Speaker embedding and extraction network architecture}{2}{subsection.4.1}\protected@file@percent }
 \citation{Wilson2018}
 \citation{Wilson2018}
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Extraction network architecture}{3}{subsection.4.2}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.3}Training objective}{3}{subsection.4.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {4.4}Data pipeline}{3}{subsection.4.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {4.2}Training objective and data pipeline}{3}{subsection.4.2}\protected@file@percent }
 \@writefile{toc}{\contentsline {section}{\numberline {5}Numerical Experiments}{3}{section.5}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.1}Whisper fine-tuning for Twi}{3}{subsection.5.1}\protected@file@percent }
 \@writefile{toc}{\contentsline {subsection}{\numberline {5.2}Baseline: overlap degrades ASR across languages}{3}{subsection.5.2}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {2}{\ignorespaces WER vs.\ overlap ratio for English (left, Whisper-tiny, clean baseline 8.1\%) and Twi (right, fine-tuned Whisper-small, clean baseline 34.7\%) at three SIR levels. Both languages show the same degradation pattern: WER increases with overlap ratio and decreases with SIR. At 0\,dB SIR with full overlap, English WER exceeds 100\%. This confirms the problem is language-agnostic.}}{4}{figure.2}\protected@file@percent }
 \newlabel{fig:baseline-wer}{{2}{4}{WER vs.\ overlap ratio for English (left, Whisper-tiny, clean baseline 8.1\%) and Twi (right, fine-tuned Whisper-small, clean baseline 34.7\%) at three SIR levels. Both languages show the same degradation pattern: WER increases with overlap ratio and decreases with SIR. At 0\,dB SIR with full overlap, English WER exceeds 100\%. This confirms the problem is language-agnostic}{figure.2}{}}
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Training}{4}{subsection.5.3}\protected@file@percent }
-\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}WER evaluation with extraction}{4}{subsection.5.4}\protected@file@percent }
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.3}Training and WER evaluation}{4}{subsection.5.3}\protected@file@percent }
 \@writefile{lof}{\contentsline {figure}{\numberline {3}{\ignorespaces Median WER vs.\ overlap ratio for baseline (no extraction), hybrid loss ($\alpha = 0.1$), and power-law reconstruction loss only ($\alpha = 0$) at 0\,dB SIR (left) and 5\,dB SIR (right). Both extraction models reduce WER at overlap ratios $\geq 0.3$, with the largest gains at full overlap.}}{4}{figure.3}\protected@file@percent }
 \newlabel{fig:extraction-wer}{{3}{4}{Median WER vs.\ overlap ratio for baseline (no extraction), hybrid loss ($\alpha = 0.1$), and power-law reconstruction loss only ($\alpha = 0$) at 0\,dB SIR (left) and 5\,dB SIR (right). Both extraction models reduce WER at overlap ratios $\geq 0.3$, with the largest gains at full overlap}{figure.3}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.4}Effect of training distribution: hard cases only}{5}{subsection.5.4}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {1}{\ignorespaces Median WER (\%) for the hard-distribution model (trained on overlap $\in \{0.5, 1.0\}$ only) vs.\ baseline Whisper. $\Delta $ is extraction minus baseline (negative = improvement).}}{5}{table.1}\protected@file@percent }
+\newlabel{tab:hard-wer}{{1}{5}{Median WER (\%) for the hard-distribution model (trained on overlap $\in \{0.5, 1.0\}$ only) vs.\ baseline Whisper. $\Delta $ is extraction minus baseline (negative = improvement)}{table.1}{}}
+\@writefile{toc}{\contentsline {subsection}{\numberline {5.5}Curriculum learning}{5}{subsection.5.5}\protected@file@percent }
+\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{5}{section.6}\protected@file@percent }
 \bibstyle{unsrtnat}
 \bibdata{references}
 \bibcite{Chime}{{1}{2020}{{Watanabe et~al.}}{{Watanabe, Mandel, Barker, Vincent, Arora, Chang, Khudanpur, Manohar, Povey, Raj, Snyder, Subramanian, Trmal, Yair, Boeddeker, Ni, Fujita, Horiguchi, Kanda, Yoshioka, and Ryant}}}
@@ -49,8 +51,9 @@
 \bibcite{Moshi}{{3}{2024}{{D{\'e}fossez et~al.}}{{D{\'e}fossez, Mazar{\'e}, Orsini, Royer, P{\'e}rez, J{\'e}gou, Grave, and Zeghidour}}}
 \bibcite{PersonaPlex}{{4}{2026}{{Roy et~al.}}{{Roy, Raiman, Lee, Ene, Kirby, Kim, Kim, and Catanzaro}}}
 \bibcite{ECAPA}{{5}{2020}{{Desplanques et~al.}}{{Desplanques, Thienpondt, and Demuynck}}}
-\@writefile{toc}{\contentsline {section}{\numberline {6}Discussion}{5}{section.6}\protected@file@percent }
-\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusions}{5}{section.7}\protected@file@percent }
+\@writefile{lot}{\contentsline {table}{\numberline {2}{\ignorespaces Median WER (\%) for all models across SIR and overlap conditions. \textbf  {Bold} indicates the best extraction model per row. \textit  {Curriculum Easy} was trained on overlap $\leq 0.3$ only; \textit  {Curriculum Medium} extends to overlap $\leq 0.5$ via warm-start fine-tuning; \textit  {Curriculum Hard} resumes from Medium and trains across all overlaps with weights $[1,1,1,2,2,3]$.}}{6}{table.2}\protected@file@percent }
+\newlabel{tab:all-models}{{2}{6}{Median WER (\%) for all models across SIR and overlap conditions. \textbf {Bold} indicates the best extraction model per row. \textit {Curriculum Easy} was trained on overlap $\leq 0.3$ only; \textit {Curriculum Medium} extends to overlap $\leq 0.5$ via warm-start fine-tuning; \textit {Curriculum Hard} resumes from Medium and trains across all overlaps with weights $[1,1,1,2,2,3]$}{table.2}{}}
+\@writefile{toc}{\contentsline {section}{\numberline {7}Conclusions}{6}{section.7}\protected@file@percent }
 \bibcite{VoiceFilter}{{6}{2019}{{Wang et~al.}}{{Wang, Muckenhirn, Wilson, Sridhar, Wu, Hershey, Saurous, Weiss, Jia, and Moreno}}}
 \bibcite{Wilson2018}{{7}{2018}{{Wilson et~al.}}{{Wilson, Galindo, Strandheim, Varghese, and Nelson}}}
-\gdef \@abspage@last{7}
+\gdef \@abspage@last{8}
