@@ -1,4 +1,4 @@
-\begin{thebibliography}{7}
+\begin{thebibliography}{12}
 \providecommand{\natexlab}[1]{#1}
 \providecommand{\url}[1]{\texttt{#1}}
 \expandafter\ifx\csname urlstyle\endcsname\relax
@@ -38,8 +38,7 @@ Alexandre D{\'e}fossez, Laurent Mazar{\'e}, Manu Orsini, Am{\'e}lie Royer,
 Rajarshi Roy, Jonathan Raiman, Sang-gil Lee, Teodor-Dumitru Ene, Robert Kirby,
   Sungwon Kim, Jaehyeon Kim, and Bryan Catanzaro.
 \newblock Personaplex: Voice and role control for full duplex conversational
-  speech models.
-\newblock 2026.
+  speech models, 2026.
 
 \bibitem[Desplanques et~al.(2020)Desplanques, Thienpondt, and Demuynck]{ECAPA}
 Brecht Desplanques, Jenthe Thienpondt, and Kris Demuynck.
@@ -47,6 +46,14 @@ Brecht Desplanques, Jenthe Thienpondt, and Kris Demuynck.
   Aggregation in TDNN Based Speaker Verification}.
 \newblock In \emph{{Interspeech 2020}}, pages 3830--3834, 2020.
 \newblock \doi{10.21437/Interspeech.2020-2650}.
+
+\bibitem[Radford et~al.(2023)Radford, Kim, Xu, Brockman, McLeavey, and
+  Sutskever]{Whisper}
+Alec Radford, Jong~Wook Kim, Tao Xu, Greg Brockman, Christine McLeavey, and
+  Ilya Sutskever.
+\newblock {Robust Speech Recognition via Large-Scale Weak Supervision}.
+\newblock In \emph{{Proceedings of the 40th International Conference on Machine
+  Learning (ICML)}}, 2023.
 
 \bibitem[Wang et~al.(2019)Wang, Muckenhirn, Wilson, Sridhar, Wu, Hershey,
   Saurous, Weiss, Jia, and Moreno]{VoiceFilter}
@@ -57,11 +64,37 @@ Quan Wang, Hannah Muckenhirn, Kevin Wilson, Prashant Sridhar, Zelin Wu, John
 \newblock In \emph{{Interspeech 2019}}, pages 2728--2732, 2019.
 \newblock \doi{10.21437/Interspeech.2019-1101}.
 
-\bibitem[Wilson et~al.(2018)Wilson, Galindo, Strandheim, Varghese, and
-  Nelson]{Wilson2018}
-Kevin Wilson, Manuel~Blanco Galindo, Are Strandheim, Zubin Varghese, and Philip
-  Nelson.
+\bibitem[Wilson et~al.(2018)Wilson, Chinen, Thorpe, Patton, Hershey, Saurous,
+  Skoglund, and Lyon]{Wilson2018}
+Kevin Wilson, Michael Chinen, Jeremy Thorpe, Brian Patton, John Hershey, Rif~A.
+  Saurous, Jan Skoglund, and Richard~F. Lyon.
 \newblock {Exploring Tradeoffs in Models for Low-Latency Speech Enhancement}.
 \newblock \emph{arXiv preprint arXiv:1811.07030}, 2018.
+
+\bibitem[Panayotov et~al.(2015)Panayotov, Chen, Povey, and
+  Khudanpur]{LibriSpeech}
+Vassil Panayotov, Guoguo Chen, Daniel Povey, and Sanjeev Khudanpur.
+\newblock {LibriSpeech: An ASR Corpus Based on Public Domain Audio Books}.
+\newblock In \emph{{IEEE International Conference on Acoustics, Speech and
+  Signal Processing (ICASSP)}}, pages 5206--5210, 2015.
+\newblock \doi{10.1109/ICASSP.2015.7178964}.
+
+\bibitem[Diack et~al.(2026)Diack, Nelson, Agbesi, Nakalembe, et~al.]{WAXAL}
+Abdoulaye Diack, Perry Nelson, Kwaku Agbesi, Angela Nakalembe, et~al.
+\newblock {WAXAL: A Large-Scale Multilingual African Language Speech Corpus},
+  2026.
+
+\bibitem[Wu et~al.(2025)Wu, Qi, Xie, and Xie]{CSC-TSE}
+Shu Wu, Anbin Qi, Yanzhang Xie, and Xiang Xie.
+\newblock {Enhancing Target Speaker Extraction with Explicit Speaker
+  Consistency Modeling}, 2025.
+
+\bibitem[Zeng and Li(2024)]{USEF-TSE}
+Bang Zeng and Ming Li.
+\newblock {USEF-TSE: Universal Speaker Embedding Free Target Speaker
+  Extraction}.
+\newblock \emph{{IEEE/ACM Transactions on Audio, Speech, and Language
+  Processing}}, 2024.
+\newblock \doi{10.1109/TASLP.2025.3554498}.
 
 \end{thebibliography}

@@ -17,6 +17,7 @@ Example:
 """
 
 import os
+import random
 
 import soundfile as sf
 import torch
@@ -35,10 +36,11 @@ class MixtureDataset(Dataset):
         speaker_emb: (192,) pre-computed speaker embedding
     """
 
-    def __init__(self, recipes_df, mix_dir, embeddings):
+    def __init__(self, recipes_df, mix_dir, embeddings, max_frames=None):
         self.recipes = recipes_df.reset_index(drop=True)
         self.mix_dir = mix_dir
         self.embeddings = embeddings
+        self.max_frames = max_frames
 
     def __len__(self):
         return len(self.recipes)
@@ -62,6 +64,12 @@ class MixtureDataset(Dataset):
         # Remove the batch dimension that compute_stft adds
         mix_mag = mix_mag.squeeze(0)       # (F, T)
         target_mag = target_mag.squeeze(0)  # (F, T)
+
+        # Random crop to max_frames (prevents OOM from very long utterances)
+        if self.max_frames is not None and mix_mag.shape[1] > self.max_frames:
+            start = random.randint(0, mix_mag.shape[1] - self.max_frames)
+            mix_mag = mix_mag[:, start:start + self.max_frames]
+            target_mag = target_mag[:, start:start + self.max_frames]
 
         # Look up the pre-computed speaker embedding
         speaker_emb = self.embeddings[row["enrollment_audio_path"]]

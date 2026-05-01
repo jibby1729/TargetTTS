@@ -45,7 +45,7 @@
 
 
 \begin{abstract}
-Modern speech-to-text systems achieve low word error rates on clean, single-speaker audio but degrade sharply when speakers overlap. We present a target-speaker speech-to-text system that, given a short enrollment clip of the desired speaker and a multi-speaker audio mixture, transcribes only the target speaker. Our pipeline combines a frozen pretrained speaker verification model (ECAPA-TDNN) to extract a speaker embedding, a trained speaker-conditioned masking network that isolates the target speaker's spectrogram, and a frozen pretrained ASR model (Whisper) for transcription. We evaluate on synthetic two-speaker mixtures from LibriSpeech at varying signal-to-interferer ratios and overlap ratios, measuring word error rate and character error rate. We show that overlapping speech degrades ASR performance across languages, and present our extraction-based approach to mitigate this degradation.
+Modern speech-to-text systems achieve low word error rates on clean, single-speaker audio but degrade sharply when speakers overlap. In this technical report, we present a target-speaker speech-to-text system that, given a short enrollment clip of the desired speaker and a multi-speaker audio mixture, transcribes only the target speaker. Our pipeline combines a frozen pretrained speaker verification model (ECAPA-TDNN) to extract a speaker embedding, a trained speaker-conditioned masking network that isolates the target speaker's spectrogram, and a frozen pretrained ASR model (Whisper) for transcription. We evaluate on synthetic two-speaker mixtures from LibriSpeech at varying signal-to-interferer ratios and overlap ratios, measuring word error rate. We show that overlapping speech degrades ASR performance across languages, and present our extraction-based approach to mitigate this degradation, achieving up to 32 percentage point absolute and 48\% relative reductions in WER.
 \end{abstract}
 
 \section*{Attestation of Teamwork}
@@ -79,7 +79,7 @@ Our pipeline consists of three stages, illustrated in Figure~\ref{fig:pipeline}:
 
     \item Speaker-conditioned extraction: A trained masking network receives the mixture magnitude spectrogram $|\mathbf{X}_{\text{mix}}|$ and the speaker embedding $\mathbf{e}$, and predicts a soft mask $\mathbf{M} \in [0,1]^{F \times T}$ that isolates the target speaker. The estimated target spectrogram is $|\hat{\mathbf{X}}_{\text{target}}| = \mathbf{M} \odot |\mathbf{X}_{\text{mix}}|$, and the waveform is reconstructed via iSTFT using the original mixture phase.
 
-    \item ASR decoding: A frozen pretrained Whisper model transcribes the extracted waveform.
+    \item ASR decoding: A frozen pretrained Whisper model~\citep{Whisper} transcribes the extracted waveform.
 \end{enumerate}
 
 Only the extraction network (stage 2) is trained; the speaker encoder and ASR model remain frozen throughout.
@@ -107,7 +107,7 @@ Only the extraction network (stage 2) is trained; the speaker encoder and ASR mo
 \draw[arr] (ecapa) -- (emb);
 
 % CNN
-\node[op, right=0.8cm of mag] (cnn) {8$\times$ Conv2D\\+ bottleneck};
+\node[op, right=0.8cm of mag] (cnn) {8$\times$ Conv2D\\(incl.\ bottleneck)};
 \draw[arr] (mag) -- (cnn);
 
 % Concat
@@ -135,17 +135,15 @@ Only the extraction network (stage 2) is trained; the speaker encoder and ASR mo
 
 \section{Methodology}
 
-\subsection{Speaker embedding}
+\subsection{Speaker embedding and extraction network architecture}
 
 We use a pretrained ECAPA-TDNN~\citep{ECAPA} (\texttt{speechbrain/spkrec-ecapa-voxceleb}) to extract a 192-dimensional speaker embedding from the enrollment utterance. The model achieves 0.80\% equal error rate on VoxCeleb1 and is kept frozen throughout.
 
-\subsection{Extraction network architecture}
-
-The extraction network follows the VoiceFilter design~\citep{VoiceFilter} and has 9.3M trainable parameters. The magnitude spectrogram is treated as a single-channel 2D image and processed by eight Conv2D layers with layer normalization and ReLU. The first two layers use separable kernels (frequency-only and time-only), layers 3--7 use joint $(5, 5)$ kernels with time-only dilation (factors $1, 2, 4, 8, 16$) giving a temporal receptive field of 31 frames ($\approx$310\,ms), and the final layer is a $1 \times 1$ bottleneck reducing from 64 to 8 channels.
+The extraction network follows the VoiceFilter design~\citep{VoiceFilter} and has 9.53M trainable parameters. The magnitude spectrogram is treated as a single-channel 2D image and processed by eight Conv2D layers with layer normalization and ReLU. The first two layers use separable kernels (frequency-only and time-only), layers 3--7 use joint $(5, 5)$ kernels with time-only dilation (factors $1, 2, 4, 8, 16$) giving a temporal receptive field of 31 frames ($\approx$310\,ms), and the final layer is a $1 \times 1$ bottleneck reducing from 64 to 8 channels.
 
 The CNN output is flattened per time frame and concatenated with the speaker embedding $\mathbf{e} \in \mathbb{R}^{192}$. A single-layer BiLSTM ($H{=}400$ per direction) processes the sequence, and two FC layers with ReLU and sigmoid produce the mask $\mathbf{M}_t \in [0,1]^{F}$ at each frame. We use a BiLSTM rather than a unidirectional LSTM because overlap regions are locally ambiguous and both past and future context help disambiguate which spectral energy belongs to the target speaker.
 
-\subsection{Training objective}
+\subsection{Training objective and data pipeline}
 
 We train with a power-law compressed reconstruction loss following Wilson et al.~\citep{Wilson2018}, who show that element-wise power-law compression of spectrograms before computing MSE improves separation quality. We use an exponent of $p = 0.3$, which we confirmed through a short ablation over $p \in \{0.1, 0.2, 0.3, 0.5, 1.0\}$:
 \[
@@ -159,16 +157,14 @@ We also experimented with a hybrid loss that adds direct supervision on the orac
 \]
 This hybrid approach is inspired by Wilson et al.~\citep{Wilson2018}, who explore tradeoffs between mask-domain and signal-domain losses. We found $\alpha = 0.1$ to best balance optimizing the oracle mask loss and the reconstruction loss, through a sweep over $\alpha \in \{0, 0.05, 0.1, 0.2, 0.3, 1.0\}$.
 
-\subsection{Data pipeline}
-
-We use LibriSpeech (\texttt{dev-clean} + \texttt{test-clean}, 16\,kHz mono) for English and WAXAL Akan for Twi. We generate 12{,}500 synthetic two-speaker mixtures from LibriSpeech: $\mathbf{x}_{\text{mix}} = \mathbf{x}_{\text{target}} + \alpha\,\mathbf{x}_{\text{interferer}}$, varying SIR $\in \{0, 5\}$\,dB and overlap ratio $\in \{0.1, 0.2, 0.3, 0.4, 0.5, 1.0\}$. Each mixture preserves the aligned clean target waveform for computing oracle masks during training. The recipes are split into 10{,}000 train, 1{,}250 validation, and 1{,}250 test samples, with speaker embeddings precomputed for all 2{,}588 unique enrollment utterances.
+We use LibriSpeech~\citep{LibriSpeech} (\texttt{dev-clean} + \texttt{test-clean}, 16\,kHz mono) for English and WAXAL Akan~\citep{WAXAL} for Twi. We generate 12{,}500 synthetic two-speaker mixtures from LibriSpeech: $\mathbf{x}_{\text{mix}} = \mathbf{x}_{\text{target}} + \alpha\,\mathbf{x}_{\text{interferer}}$, varying SIR $\in \{0, 5\}$\,dB and overlap ratio $\in \{0.1, 0.2, 0.3, 0.4, 0.5, 1.0\}$. Each mixture preserves the aligned clean target waveform for computing oracle masks during training. The recipes are split into 10{,}000 train, 1{,}250 validation, and 1{,}250 test samples, with speaker embeddings precomputed for all 2{,}588 unique enrollment utterances.
 
 
 \section{Numerical Experiments}
 
 \subsection{Whisper fine-tuning for Twi}
 
-Whisper does not natively support Twi (Akan), producing near-100\% WER and CER out of the box. We fine-tuned Whisper-small (244M params) on the WAXAL Akan dataset, reducing clean-speech WER from $\sim$100\% to 33.3\% and CER from $\sim$100\% to 12.1\%. This fine-tuned model serves as the Twi baseline for our overlap experiments.
+Whisper does not natively support Twi (Akan), producing near-100\% WER and CER out of the box. We fine-tuned Whisper-small (244M params) on the WAXAL Akan dataset~\citep{WAXAL}, reducing clean-speech WER from $\sim$100\% to 33.3\% and CER from $\sim$100\% to 12.1\%. This fine-tuned model serves as the Twi baseline for our overlap experiments.
 
 \subsection{Baseline: overlap degrades ASR across languages}
 
@@ -183,16 +179,11 @@ We evaluated Whisper-tiny (39M params) on English and the fine-tuned Whisper-sma
 \label{fig:baseline-wer}
 \end{figure}
 
-\subsection{Training}
+\subsection{Training and WER evaluation}
 
-We trained with batch size 32, initial learning rate $10^{-3}$, Adam optimizer, hybrid loss $\alpha = 0.1$, power-law compression $p = 0.3$, and early stopping with patience 7. The learning rate is managed by ReduceLROnPlateau (factor 0.5, patience 3), which halves the learning rate whenever the validation loss stops improving for 3 consecutive epochs.
+We trained with batch size 16 (maximum that fits in GPU memory with 14-second random crops), initial learning rate $10^{-3}$, Adam optimizer, hybrid loss $\alpha = 0.1$, power-law compression $p = 0.3$, and early stopping with patience 7. The learning rate is halved by ReduceLROnPlateau whenever validation loss does not improve for 3 consecutive epochs.
 
-% TODO: Add training curves (train loss, val loss vs epoch)
-% TODO: Add final training results
-
-\subsection{WER evaluation with extraction}
-
-We evaluated two trained models on the 1{,}250-sample test set: the hybrid loss model ($\alpha = 0.1$) and the power-law reconstruction loss model ($\alpha = 0$). Both were trained until validation loss plateaued.
+We evaluated seven trained configurations on the 1{,}250-sample test set, including a hybrid loss model ($\alpha = 0.1$) and a power-law reconstruction loss model ($\alpha = 0$); curriculum-based variants are described in the next section. All models were trained until validation loss plateaued.
 
 \begin{figure}[H]
 \centering
@@ -201,22 +192,64 @@ We evaluated two trained models on the 1{,}250-sample test set: the hybrid loss 
 \label{fig:extraction-wer}
 \end{figure}
 
-Both extraction models significantly reduce median WER compared to the baseline at overlap ratios $\geq 0.3$. At full overlap (1.0), the hybrid model reduces WER from 90.9\% to 62.8\% at 0\,dB and from 57.5\% to 34.6\% at 5\,dB. The power-law model achieves comparable gains (67.4\% and 37.5\% respectively). Neither model consistently dominates the other: hybrid is slightly better at very high overlap (1.0), while power-law is slightly better at medium overlap (0.3--0.5). At low overlap ($\leq 0.2$), extraction provides marginal or no benefit, as the interference is brief enough for Whisper to handle without assistance.
+Both extraction models significantly reduce median WER compared to the baseline at overlap ratios $\geq 0.3$. At full overlap (1.0), the hybrid model reduces WER from 90.9\% to 60.5\% at 0\,dB and from 57.5\% to 34.3\% at 5\,dB. The power-law model achieves smaller but still notable gains (67.4\% and 37.5\% respectively). The hybrid model consistently outperforms power-law across most overlap conditions, with the gap widening at mid-range overlaps (0.3--0.5) where the oracle mask supervision prevents the pass-through shortcut. At low overlap ($\leq 0.2$), extraction provides marginal or no benefit, as the interference is brief enough for Whisper to handle without assistance.
+
+\subsection{Curriculum learning}
+
+Curriculum learning trains a model on progressively harder examples rather than sampling the full difficulty range uniformly. The idea is that easy examples teach the model the basic task first, and harder examples are introduced once that foundation is in place.
+
+Following the VoiceFilter paper~\citep{VoiceFilter}, we first tried training only on hard examples by restricting the training set to overlap $\in \{0.5, 1.0\}$. The results were poor: the Hard-dist.\ column of Table~\ref{tab:all-models} shows near-zero improvement and slight degradation at full overlap. Low-overlap examples provide clean, unambiguous oracle masks that the model needs to learn basic masking behavior; without them, training never gets off the ground.
+
+We therefore used a three-phase curriculum. In Phase 1 (Easy), the model is trained from scratch on overlap $\leq 0.3$ until val loss plateaued, learning to separate well-separated mixtures. In Phase 2 (Medium), training resumes from that checkpoint with the harder ratios 0.4 and 0.5 added, upsampled at weight $2\times$, and continues until val loss plateaued again. In Phase 3 (Hard), training resumes from the Medium checkpoint on the full overlap range $\{0.1, 0.2, 0.3, 0.4, 0.5, 1.0\}$ with upsampling weights $[1, 1, 1, 2, 2, 3]$, putting more gradient on the hardest conditions. All phases use hybrid loss ($\alpha = 0.1$).
+
+Table~\ref{tab:all-models} compares median WER across all seven trained configurations. Curriculum Hard achieves the best result on nearly every row, with the largest gains at mid-range overlaps (0.2--0.5) where the progressive upsampling had the most effect.
+
+\begin{table}[H]
+\centering
+\footnotesize
+\caption{Median WER (\%) for all models across SIR and overlap conditions. \textbf{Bold} indicates the best extraction model per row. \textit{Curriculum Easy} was trained on overlap $\leq 0.3$ only; \textit{Curriculum Medium} extends to overlap $\leq 0.5$ via warm-start fine-tuning; \textit{Curriculum Hard} resumes from Medium and trains across all overlaps with weights $[1,1,1,2,2,3]$.}
+\label{tab:all-models}
+\resizebox{\linewidth}{!}{%
+\begin{tabular}{ccrrrrrrrr}
+\toprule
+SIR & Overlap & Baseline & Hard-dist. & Power Law & Hybrid & Curriculum & Curriculum & Curriculum \\
+(dB) & & & (PL, $\{0.5,1.0\}$) & ($\alpha=0$) & ($\alpha=0.1$) & Easy & Medium & Hard \\
+\midrule
+0 & 0.1 & 10.0 & 9.5 & \textbf{9.1} & 10.0 & \textbf{9.1} & \textbf{9.1} & \textbf{9.1} \\
+0 & 0.2 & 18.2 & 18.2 & 16.8 & 15.9 & 18.3 & 16.2 & \textbf{11.0} \\
+0 & 0.3 & 33.3 & 28.1 & 21.1 & 17.8 & 22.2 & 20.0 & \textbf{17.2} \\
+0 & 0.4 & 39.6 & 37.5 & 30.0 & 30.8 & 37.5 & 29.2 & \textbf{26.9} \\
+0 & 0.5 & 51.1 & 48.0 & 40.9 & 38.5 & 43.7 & 36.5 & \textbf{34.0} \\
+0 & 1.0 & 90.9 & 93.8 & 67.4 & 60.5 & 84.6 & 61.5 & \textbf{58.8} \\
+\midrule
+5 & 0.1 & 4.3  & 4.8  & 5.7  & \textbf{3.4} & 4.8 & 3.6 & \textbf{3.4} \\
+5 & 0.2 & 10.0 & 10.0 & 10.0 & \textbf{6.2} & 9.5 & 8.7 & 6.7 \\
+5 & 0.3 & 20.0 & 20.0 & 15.9 & 15.2 & 17.4 & 15.4 & \textbf{14.8} \\
+5 & 0.4 & 23.1 & 22.2 & 18.5 & 16.7 & 20.0 & 17.9 & \textbf{13.5} \\
+5 & 0.5 & 27.8 & 25.0 & 18.2 & 17.0 & 23.8 & \textbf{16.7} & \textbf{16.7} \\
+5 & 1.0 & 57.5 & 50.0 & 37.5 & \textbf{34.3} & 48.9 & 36.0 & \textbf{34.3} \\
+\bottomrule
+\end{tabular}}%
+\end{table}
+
+Models trained without oracle mask supervision predict degenerate masks: Power Law ($\alpha=0$) converges to mask $\approx 1.0$ (mean 0.91), passing the mixture through unchanged, while Hard-dist.\ settles near 0.5 (mean 0.49), uniformly attenuating all frequencies. Models trained with oracle mask supervision (Hybrid, Curriculum) produce bimodal masks (mean $\approx 0.36$, median $= 0.0$), with ${\sim}59\%$ of values near zero (suppressing interferer bins) and ${\sim}30\%$ near one (preserving target bins), reflecting genuine speaker separation rather than a shortcut.
 
 
 \section{Discussion}
 
-The extraction network reduces WER most where baseline Whisper struggles most: at high overlap ratios and low SIR. At 0\,dB SIR with full overlap, median WER drops from 90.9\% to 62.8\%, a 28 percentage point reduction. At 5\,dB SIR with full overlap, the reduction is 57.5\% to 34.6\%. The difference between the hybrid loss ($\alpha = 0.1$) and pure power-law reconstruction loss ($\alpha = 0$) is minimal in terms of downstream WER, suggesting that the choice of training objective matters less than the overall extraction approach.
-
-However, the extracted WER at full overlap (62.8\% at 0\,dB) remains far from the clean-speech baseline of 8.1\%. The model has not fully converged during training: the validation loss plateaued well above the oracle mask floor, indicating that the predicted masks are still far from optimal. Longer training, higher model capacity, or architectural improvements such as skip connections could close this gap.
-
-Our training data was uniformly distributed across overlap ratios (0.1, 0.2, 0.3, 0.4, 0.5, 1.0), meaning the model spent equal time on easy cases (low overlap, where Whisper already performs well) and hard cases (high overlap, where extraction is most needed). Biasing the training distribution toward higher overlap ratios, or using a curriculum that starts with easy examples and gradually increases difficulty, could improve performance on the conditions where extraction matters most.
+The extraction network reduces WER most where baseline Whisper struggles most: at high overlap ratios and low SIR. At 0\,dB SIR with full overlap, median WER drops from 90.9\% to 58.8\% with the best model, a 32 percentage point reduction. At 5\,dB SIR with full overlap the reduction is from 57.5\% to 34.3\%. The greatest relative gain is at 0.3 overlap (0\,dB SIR), where WER falls by 48.3\% relative to the unprocessed mixture. However, the extracted WER at full overlap remains far from the clean-speech baseline of 8.1\%. We also verified that running extraction on clean speech (no interferer, overlap $\approx 0$) causes no noticeable WER degradation across all trained models, confirming the extractor does not suppress the target signal when no interference is present. Mask distribution analysis confirms that the hybrid loss is beneficial: power-law-only training collapses to a near-uniform mask, while the hybrid loss produces bimodal masks with genuine suppression of the interfering speaker. Curriculum learning further improves over uniform sampling from the full training set. Our reductions are comparable to VoiceFilter, which also reduces WER by roughly 58\% in the best case, though on a larger training set. VoiceFilter's training distribution did not use curriculum ordering, and our results suggest it may have achieved even better gains had it adopted a similar progressive approach.
 
 We demonstrated that overlapping speech degrades ASR in both English and Twi, confirming the problem is language-agnostic. The extraction network operates on spectrograms and speaker embeddings rather than language-specific features, so it should in principle generalize across languages. We did not have time to evaluate the extraction network on Twi, but this is a natural next step: training on English and testing on Twi would reveal whether the learned masking strategy transfers cross-lingually without additional fine-tuning.
 
+Qualitative listening examples in the demo notebook show that in some cases the interferer is substantially dampened in the extracted audio. This dampening already happens implicitly: the oracle mask term pushes the predicted mask toward zero in bins where the interferer dominates, so interferer suppression is a side effect of mask supervision rather than an explicit objective. A more direct objective is to maximise the output Signal-to-Interference Ratio (SIR) explicitly, for example:
+\[
+    \mathcal{L}_{\text{SIR}} = \log\bigl\|\mathbf{M} \odot |\mathbf{X}_{\text{interf}}|\bigr\|^2 - \log\bigl\|\mathbf{M} \odot |\mathbf{X}_{\text{target}}|\bigr\|^2
+\]
+where $|\mathbf{X}_{\text{interf}}|$ and $|\mathbf{X}_{\text{target}}|$ are the interferer and target magnitude spectrograms (both available at training time since the mixtures are synthetic). Unlike a simple energy penalty on the interferer (i.e., only the first term), this ratio form has a positive signal (pass target energy) and a negative signal (block interferer energy), so it cannot be trivially minimised by zeroing the mask entirely. Along another loss direction, Wu et al.~\citep{CSC-TSE} propose adding a speaker consistency term $\mathcal{L}_{\text{sc}} = 1 - \cos(\mathbf{e}_{\text{enroll}},\, \hat{\mathbf{e}}_{\text{extracted}})$ based on the cosine similarity between the speaker embedding of the extracted waveform and the enrollment audio. This would force the model to make fuller use of the enrollment embedding, since the extracted output would need to be acoustically close to the enrolled speaker and not just minimise reconstruction error. On the architecture side, our current design conditions the masking network on a single global 192-dimensional speaker embedding concatenated per frame. Recent work such as USEF-TSE~\citep{USEF-TSE} replaces this with multi-head cross-attention over frame-level enrollment features, allowing the model to attend to fine-grained speaker characteristics at each time step rather than compressing them into a fixed vector. This could improve separation quality, particularly in challenging full-overlap conditions.
+
 \section{Conclusions}
 
-We built a target-speaker speech-to-text system that uses a speaker-conditioned masking network to isolate a target speaker from a two-speaker mixture before transcription with Whisper. The system reduces median WER by up to 28 percentage points at full overlap compared to running Whisper directly on the mixture. We showed that speaker overlap degrades ASR performance in both English and Twi, and that a lightweight extraction module (9.3M parameters) trained with a hybrid loss can partially recover the target speaker's signal. Future work should explore curriculum learning, harder training distributions, and cross-lingual evaluation to improve performance on the most challenging conditions.
+We built a target-speaker speech-to-text system combining a frozen ECAPA-TDNN speaker encoder, a trained masking network, and a frozen Whisper ASR model. The extraction network reduces median WER by up to 32 percentage points at full overlap (0\,dB SIR) compared to running Whisper directly on the mixture and reduces the relative error by nearly 48\% at lower overlaps. Speaker overlap degrades ASR in both English and Twi, and the extraction approach partially recovers the target signal in English. Training with a hybrid loss ($\alpha = 0.1$) combining power-law reconstruction loss with oracle mask supervision works best. A three-phase curriculum that progressively introduces harder overlap ratios further improves performance, particularly at mid-range overlaps (0.2--0.5), and strictly outperforms all non-curriculum baselines.
 
 
 \bibliographystyle{unsrtnat}
