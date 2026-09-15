@@ -7,30 +7,35 @@ Audio:
     - Normalize amplitude (peak normalization)
 
 Text:
-    - Normalize transcripts using Whisper's EnglishTextNormalizer
-      (lowercase, strip punctuation, expand contractions, remove fillers)
-    - This ensures fair WER comparison between ground truth and ASR output
+    - normalize_text: Whisper EnglishTextNormalizer for English WER
+    - normalize_akan_text: Akan-safe cleaner for Twi LM / WAXAL text
 """
 
-import numpy as np
-import soundfile as sf
-import torch
-from tqdm import tqdm
-from whisper.normalizers import EnglishTextNormalizer
-from datasets import load_from_disk, Audio as HFAudio
+from __future__ import annotations
 
+import re
+import unicodedata
 
 TARGET_SAMPLE_RATE = 16000
 
-# Singleton normalizer instance
-_text_normalizer = EnglishTextNormalizer()
+_text_normalizer = None
+
+
+def _english_normalizer():
+    """Lazy-load Whisper's English normalizer (heavy import)."""
+    global _text_normalizer
+    if _text_normalizer is None:
+        from whisper.normalizers import EnglishTextNormalizer
+
+        _text_normalizer = EnglishTextNormalizer()
+    return _text_normalizer
 
 
 # ---------------------------------------------------------------------------
 # Audio preprocessing
 # ---------------------------------------------------------------------------
 
-def load_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE) -> torch.Tensor:
+def load_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE):
     """Load an audio file and return as a torch tensor.
 
     Args:
@@ -40,6 +45,9 @@ def load_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE) -> torch.Tensor:
     Returns:
         Mono waveform tensor of shape (1, num_samples).
     """
+    import soundfile as sf
+    import torch
+
     data, sr = sf.read(path, dtype="float32")
 
     # Convert to mono if multi-channel
@@ -57,7 +65,7 @@ def load_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE) -> torch.Tensor:
     return waveform
 
 
-def normalize_amplitude(waveform: torch.Tensor) -> torch.Tensor:
+def normalize_amplitude(waveform):
     """Peak-normalize a waveform to [-1, 1].
 
     Args:
@@ -72,7 +80,7 @@ def normalize_amplitude(waveform: torch.Tensor) -> torch.Tensor:
     return waveform
 
 
-def preprocess_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE) -> torch.Tensor:
+def preprocess_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE):
     """Load, resample, and peak-normalize an audio file.
 
     Args:
@@ -92,22 +100,47 @@ def preprocess_audio(path: str, target_sr: int = TARGET_SAMPLE_RATE) -> torch.Te
 # ---------------------------------------------------------------------------
 
 def normalize_text(text: str) -> str:
-    """Normalize a transcript for WER evaluation.
+    """Normalize a transcript for English WER evaluation.
 
     Applies Whisper's EnglishTextNormalizer which:
         - Lowercases
         - Removes punctuation
         - Expands contractions ("don't" -> "do not")
         - Removes filler words (uh, um, hmm, etc.)
+        - Converts English number words to digits
         - Strips extra whitespace
 
-    Args:
-        text: Raw transcript string.
-
-    Returns:
-        Normalized transcript string.
+    Do not use this for Twi/Akan LM text. Use normalize_akan_text instead.
     """
-    return _text_normalizer(text)
+    return _english_normalizer()(text)
+
+
+# Punctuation stripped for Akan LM text, including apostrophes.
+# Does not match Akan letters such as ɛ/ɔ (they are letters, not punctuation).
+_AKAN_PUNCTUATION_RE = re.compile(r"[“”\"'‘’.,!?;:()\[\]{}<>/\\|*_+=~`…—–-]")
+_AKAN_WHITESPACE_RE = re.compile(r"\s+")
+
+
+def normalize_akan_text(text: str) -> str:
+    """Normalize an Akan/Twi transcript for LM training and Twi WER.
+
+    Unlike normalize_text / EnglishTextNormalizer, this does not expand
+    English contractions, drop English fillers, rewrite number words to
+    digits, or strip combining marks via NFKD. WAXAL ASR writes numbers
+    as Twi words (baako, mmienu, …), which are left unchanged.
+
+    Steps:
+        - Unicode NFC
+        - lowercase
+        - replace punctuation (including apostrophes) with spaces
+        - collapse whitespace
+        - keep Akan letters (ɛ, ɔ, etc.)
+        - keep one dataset row as one line (does not split on '.')
+    """
+    value = unicodedata.normalize("NFC", text or "").strip().lower()
+    value = _AKAN_PUNCTUATION_RE.sub(" ", value)
+    value = _AKAN_WHITESPACE_RE.sub(" ", value)
+    return value.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -126,6 +159,10 @@ def build_waxal_cache(disk_path: str, target_sr: int = TARGET_SAMPLE_RATE) -> di
     Returns:
         Dict mapping filename keys to peak-normalized float32 numpy arrays.
     """
+    import numpy as np
+    from datasets import load_from_disk, Audio as HFAudio
+    from tqdm import tqdm
+
     print(f"Loading WAXAL dataset from {disk_path}...")
     ds = load_from_disk(disk_path)["test"]
 
@@ -143,7 +180,7 @@ def build_waxal_cache(disk_path: str, target_sr: int = TARGET_SAMPLE_RATE) -> di
         path = item["audio_path"]
         key = path if path is not None else f"waxal_id_{item['id']}"
         array = item["audio"]["array"].astype(np.float32)
-        
+
         # Peak normalize to match preprocess_audio behaviour
         peak = np.abs(array).max()
         if peak > 0:

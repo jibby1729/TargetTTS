@@ -218,6 +218,9 @@ checkpoints/
 !checkpoints/hybrid_alpha_0.1/
 data/prepared_training/
 
+# Regenerable KenLM Twi text
+data/kenlm/
+
 # Claude Code
 .claude/
 CLAUDE.md
